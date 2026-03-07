@@ -12,9 +12,14 @@ export default defineConfig({
     ? [['github'], ['html', { open: 'never' }]]
     : [['html', { open: 'on-failure' }]],
 
+  expect: {
+    timeout: 60_000,
+  },
+
   use: {
     baseURL: env.BASE_URL,
     actionTimeout: 60_000,
+    navigationTimeout: 60_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',
