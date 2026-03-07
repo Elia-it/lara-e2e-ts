@@ -1,14 +1,21 @@
 {
   "name": "lara-e2e-ts",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {},
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "description": "End-to-end test suite for Lara using Playwright",
+  "private": true,
+  "scripts": {
+    "test": "npx playwright test",
+    "test:chromium": "npx playwright test --project=desktop-chrome",
+    "test:smoke": "npx playwright test tests/smoke/",
+    "test:headed": "npx playwright test --headed",
+    "test:debug": "npx playwright test --debug",
+    "test:ui": "npx playwright test --ui",
+    "report": "npx playwright show-report",
+    "codegen": "npx playwright codegen"
+  },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
-    "@types/node": "^25.3.5"
+    "@types/node": "^25.3.5",
+    "dotenv": "^16.4.7"
   }
 }
