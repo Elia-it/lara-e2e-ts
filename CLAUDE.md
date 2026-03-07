@@ -65,13 +65,13 @@ docs/           - Architecture, conventions, writing-tests guides
 - ALWAYS explicitly set source and target languages — the app geo-detects defaults which vary by runner location.
 
 ### Device Matrix
-8 projects configured in `playwright.config.ts` covering ~95% of modern business users:
-- **Desktop:** `desktop-chrome` (1920x1080), `desktop-safari` (1440x900), `desktop-firefox` (1536x864), `desktop-edge` (1366x768)
-- **Mobile:** `mobile-iphone-15-pro`, `mobile-galaxy-s24` (412x915)
+Currently only `desktop-chrome` (1920x1080) is active. 7 additional projects are defined but commented out in `playwright.config.ts`:
+- **Desktop:** `desktop-safari`, `desktop-firefox`, `desktop-edge`
+- **Mobile:** `mobile-iphone-15-pro`, `mobile-galaxy-s24`
 - **Tablet:** `tablet-ipad-air`
-- **Low-end:** `low-end-android` (360x800)
+- **Low-end:** `low-end-android`
 
-Run a single project: `npx playwright test --project=desktop-chrome`
+To enable a project, uncomment it in `playwright.config.ts` and update `.github/workflows/e2e.yml` to install the required browser.
 
 ## Commands
 - `npm test` - Run all tests

@@ -68,18 +68,20 @@ export const BLOCKED_ROUTES: string[] = [
 ```
 
 ### Device Matrix (Synthetic Monitoring)
-The suite runs across 8 device projects targeting ~95% of the modern business user market. Each project is a separate Playwright configuration in `playwright.config.ts`.
+Currently only `desktop-chrome` is active. 7 additional projects are defined but commented out in `playwright.config.ts`, covering ~95% of the modern business user market when fully enabled.
 
-| Project | Engine | Viewport | Use Case |
-|---|---|---|---|
-| `desktop-chrome` | Chromium | 1920x1080 | Windows 11 standard |
-| `desktop-safari` | WebKit | 1440x900 | macOS Sonoma |
-| `desktop-firefox` | Firefox | 1536x864 | Linux / Ubuntu |
-| `desktop-edge` | Chromium | 1366x768 | Enterprise Windows |
-| `mobile-iphone-15-pro` | WebKit | 393x852 | iOS flagship |
-| `mobile-galaxy-s24` | Chromium | 412x915 | Android flagship |
-| `tablet-ipad-air` | WebKit | 820x1180 | Tablet portrait |
-| `low-end-android` | Chromium | 360x800 | Budget Android / Pixel 7 |
+| Project | Engine | Viewport | Use Case | Status |
+|---|---|---|---|---|
+| `desktop-chrome` | Chromium | 1920x1080 | Windows 11 standard | Active |
+| `desktop-safari` | WebKit | 1440x900 | macOS Sonoma | Commented out |
+| `desktop-firefox` | Firefox | 1536x864 | Linux / Ubuntu | Commented out |
+| `desktop-edge` | Chromium | 1366x768 | Enterprise Windows | Commented out |
+| `mobile-iphone-15-pro` | WebKit | 393x852 | iOS flagship | Commented out |
+| `mobile-galaxy-s24` | Chromium | 412x915 | Android flagship | Commented out |
+| `tablet-ipad-air` | WebKit | 820x1180 | Tablet portrait | Commented out |
+| `low-end-android` | Chromium | 360x800 | Budget Android / Pixel 7 | Commented out |
+
+To enable additional projects, uncomment them in `playwright.config.ts` and update `.github/workflows/e2e.yml` to install the required browsers and (optionally) restore the matrix strategy.
 
 **Artifact policy** (optimized for high-frequency runs):
 - `screenshot: 'only-on-failure'` - minimize storage
@@ -88,7 +90,7 @@ The suite runs across 8 device projects targeting ~95% of the modern business us
 - `timeout: 30s` - catch performance regressions fast
 - `retries: 2` (CI) - filter transient network noise
 
-**CI schedule:** Runs every 10 minutes via GitHub Actions cron. Each device runs as a parallel matrix job.
+**CI schedule:** Runs every 10 minutes via GitHub Actions cron.
 
 ### Environment Configuration
 All environment-dependent values live in `src/config/env.config.ts`, loaded from `.env` at runtime. Tests never contain hardcoded URLs, credentials, or environment-specific logic.

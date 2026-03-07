@@ -54,24 +54,18 @@ docs/
 
 ## Device Matrix
 
-8 projects covering ~95% of the modern business user market:
+Currently only Desktop Chrome is enabled. Additional projects are defined in `playwright.config.ts` (commented out) and can be enabled as needed.
 
-| Project | Engine | Viewport |
-|---|---|---|
-| `desktop-chrome` | Chromium | 1920x1080 |
-| `desktop-safari` | WebKit | 1440x900 |
-| `desktop-firefox` | Firefox | 1536x864 |
-| `desktop-edge` | Chromium | 1366x768 |
-| `mobile-iphone-15-pro` | WebKit | 393x852 |
-| `mobile-galaxy-s24` | Chromium | 412x915 |
-| `tablet-ipad-air` | WebKit | 820x1180 |
-| `low-end-android` | Chromium | 360x800 |
-
-Run a single project:
-
-```bash
-npx playwright test --project=desktop-chrome
-```
+| Project | Engine | Viewport | Status |
+|---|---|---|---|
+| `desktop-chrome` | Chromium | 1920x1080 | Active |
+| `desktop-safari` | WebKit | 1440x900 | Commented out |
+| `desktop-firefox` | Firefox | 1536x864 | Commented out |
+| `desktop-edge` | Chromium | 1366x768 | Commented out |
+| `mobile-iphone-15-pro` | WebKit | 393x852 | Commented out |
+| `mobile-galaxy-s24` | Chromium | 412x915 | Commented out |
+| `tablet-ipad-air` | WebKit | 820x1180 | Commented out |
+| `low-end-android` | Chromium | 360x800 | Commented out |
 
 ## Documentation
 
@@ -86,4 +80,4 @@ Tests run automatically on:
 - Every 10 minutes via cron (synthetic monitoring)
 - Manual trigger via `workflow_dispatch`
 
-Each device project runs as a parallel matrix job. Reports are uploaded as artifacts and retained for 7 days.
+Currently runs Desktop Chrome only. Reports are uploaded as artifacts and retained for 7 days.
