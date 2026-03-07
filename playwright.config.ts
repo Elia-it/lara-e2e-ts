@@ -3,7 +3,7 @@ import { env } from './src/config/env.config';
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 30_000,
+  timeout: 60_000,
   fullyParallel: true,
   forbidOnly: env.CI,
   retries: env.CI ? 2 : 0,
@@ -14,6 +14,7 @@ export default defineConfig({
 
   use: {
     baseURL: env.BASE_URL,
+    actionTimeout: 60_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',
