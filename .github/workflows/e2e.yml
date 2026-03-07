@@ -31,8 +31,10 @@ jobs:
       - name: Run E2E tests
         run: npx playwright test --project=desktop-chrome
         env:
-          BASE_URL: ${{ vars.BASE_URL }}
-          APP_URL: ${{ vars.APP_URL }}
+          CI: true
+          BASE_URL: ${{ secrets.BASE_URL }}
+          APP_URL: ${{ secrets.APP_URL }}
+          UI_LANGUAGE: ${{ secrets.UI_LANGUAGE }}
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
 
