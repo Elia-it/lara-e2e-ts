@@ -39,7 +39,7 @@ export class TranslatorEditorComponent {
     await this.sourceInput.fill(text);
   }
 
-  async getTranslation(): Promise<Locator> {
+  getTranslation(): Locator {
     return this.translatedText.getByRole('paragraph');
   }
 

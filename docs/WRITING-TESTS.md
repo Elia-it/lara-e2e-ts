@@ -93,7 +93,7 @@ test('should translate text', async ({ translatePage }) => {
   await translatePage.editor.selectTargetLanguage('Italian');
   await translatePage.translate('Hello world!');
 
-  const output = await translatePage.editor.getTranslation();
+  const output = translatePage.editor.getTranslation();
   await expect(output).toContainText('Ciao mondo');
 });
 ```

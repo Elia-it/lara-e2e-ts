@@ -15,7 +15,7 @@ test.describe('Translation', () => {
     await translatePage.editor.selectTargetLanguage('Spanish (Spain)');
     await translatePage.translate('Hello World!');
 
-    const output = await translatePage.editor.getTranslation();
+    const output = translatePage.editor.getTranslation();
     await expect(output).toContainText('¡Hola, mundo!');
   });
 });

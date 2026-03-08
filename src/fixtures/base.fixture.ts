@@ -19,7 +19,7 @@ export const test = base.extend<Fixtures>({
 
     // Dismiss cookie consent on every page load (covers cross-domain navigations)
     const cookieConsent = new CookieConsentComponent(page);
-    page.on('load', () => cookieConsent.acceptIfVisible());
+    page.on('load', () => void cookieConsent.acceptIfVisible());
 
     // Set UI language to ensure deterministic locale
     await page.goto('/');
