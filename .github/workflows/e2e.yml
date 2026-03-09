@@ -87,13 +87,15 @@ jobs:
               issue_number: context.issue.number,
             });
 
-            const previous = comments.filter(c => c.body?.includes(marker));
+            const previous = comments.filter(c =>
+              c.body?.includes(marker) || c.body?.includes('E2E Test Report')
+            );
             for (const old of previous) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 comment_id: old.id,
-                body: `${marker}\n~~Outdated E2E report~~ \u2014 see latest comment below.`,
+                body: `${marker}\n> :warning: **Deprecated report** — see latest comment below.`,
               });
             }
 
