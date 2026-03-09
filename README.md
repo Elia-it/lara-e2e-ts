@@ -1,8 +1,10 @@
 # Lara E2E Tests
 
-End-to-end test suite for Lara using [Playwright](https://playwright.dev/) and TypeScript.
+End-to-end test suite for Lara using [Playwright](https://playwright.dev/) and TypeScript, with **S3 report storage** for persistent test reports served via CloudFront.
 
 ## Quick Start
+
+### E2E Tests
 
 ```bash
 # Install dependencies
@@ -21,7 +23,17 @@ npm test
 npm run test:ui
 ```
 
+### Upload Report to S3
+
+```bash
+# After running tests
+npm run report:upload -- --status=passed
+# Prints: https://d1234.cloudfront.net/reports/2026-03-09T.../index.html
+```
+
 ## Scripts
+
+### E2E Tests
 
 | Command | Description |
 |---|---|
@@ -33,6 +45,7 @@ npm run test:ui
 | `npm run test:ui` | Open Playwright UI mode |
 | `npm run report` | Open last HTML report |
 | `npm run codegen` | Launch Playwright codegen tool |
+| `npm run report:upload` | Upload Playwright report to S3 |
 
 ## Project Structure
 
@@ -46,10 +59,14 @@ src/
 tests/
   auth/           Authentication tests
   smoke/          Health-check / smoke tests
+  translate/      Translation feature specs
+scripts/
+  upload-report.ts  Upload report to S3 + update index
 docs/
   ARCHITECTURE.md Design decisions and patterns
   CONVENTIONS.md  Coding standards and naming rules
   WRITING-TESTS.md  Step-by-step guide to add new tests
+  REPORT-STORAGE.md  S3 report storage reference
 ```
 
 ## Device Matrix
@@ -69,9 +86,10 @@ Currently only Desktop Chrome is enabled. Additional projects are defined in `pl
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md) - Design decisions and patterns
-- [Conventions](docs/CONVENTIONS.md) - Coding standards
-- [Writing Tests](docs/WRITING-TESTS.md) - How to add new tests
+- [Architecture](docs/ARCHITECTURE.md) — Design decisions and patterns
+- [Conventions](docs/CONVENTIONS.md) — Coding standards
+- [Writing Tests](docs/WRITING-TESTS.md) — How to add new tests
+- [Report Storage](docs/REPORT-STORAGE.md) — S3 report upload and CloudFront setup
 
 ## CI
 
@@ -80,4 +98,4 @@ Tests run automatically on:
 - Every 10 minutes via cron (synthetic monitoring)
 - Manual trigger via `workflow_dispatch`
 
-Currently runs Desktop Chrome only. Reports are uploaded as artifacts and retained for 7 days.
+Currently runs Desktop Chrome only. Reports are uploaded to S3 and a PR comment with the report URL is posted automatically. Artifacts are also retained in GitHub Actions for 7 days.

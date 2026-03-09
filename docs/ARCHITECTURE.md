@@ -109,6 +109,34 @@ Exception: `locator('#id')` is used inside `TranslatorEditorComponent` for langu
 ### Geo-Independent Tests
 The app auto-detects target language based on the runner's location (e.g., Italian in Italy, German in Frankfurt). Translation tests must always explicitly set both source and target languages to ensure deterministic results regardless of where CI runs.
 
+## S3 Report Storage
+
+Playwright HTML reports are uploaded directly to S3 and served via CloudFront. No API server or database needed.
+
+### Architecture
+
+```
+Playwright CI  ──npx tsx──▶  scripts/upload-report.ts  ──▶  S3 (reports/)
+                                                         ──▶  CloudFront (public read)
+```
+
+### How It Works
+
+1. CI runs Playwright tests, producing `playwright-report/`.
+2. `scripts/upload-report.ts` uploads the entire report directory to S3 under `reports/{timestamp}_{branch}_{sha}/`.
+3. The script updates `reports/manifest.json` (run metadata) and regenerates `reports/index.html` (static dashboard).
+4. S3 lifecycle policy auto-deletes objects under `reports/` after 31 days.
+5. CloudFront with OAC provides public HTTPS access while keeping the S3 bucket private.
+
+### Key Decisions
+
+- **No API server:** Playwright's HTML report is already an interactive dashboard. We just host it.
+- **No database:** `manifest.json` in S3 stores run metadata. The upload script prunes old entries.
+- **S3 lifecycle for retention:** No cron jobs needed. AWS handles expiration automatically.
+- **CloudFront + OAC:** S3 stays fully private. CloudFront provides caching and HTTPS.
+
+See [Report Storage docs](REPORT-STORAGE.md) for the full setup and usage guide.
+
 ## Folder Conventions
 
 | Path | Purpose | Naming |
@@ -119,3 +147,4 @@ The app auto-detects target language based on the runner's location (e.g., Itali
 | `src/helpers/` | API clients, data builders | `<name>.helper.ts` |
 | `src/config/` | Environment, constants | `<name>.config.ts` |
 | `tests/<feature>/` | Spec files grouped by domain | `<name>.spec.ts` |
+| `scripts/` | Build/upload scripts | `upload-report.ts` |

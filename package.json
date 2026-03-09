@@ -11,11 +11,14 @@
     "test:debug": "npx playwright test --debug",
     "test:ui": "npx playwright test --ui",
     "report": "npx playwright show-report",
-    "codegen": "npx playwright codegen"
+    "codegen": "npx playwright codegen",
+    "report:upload": "npx tsx scripts/upload-report.ts"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.750.0",
     "@playwright/test": "^1.58.2",
     "@types/node": "^25.3.5",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "tsx": "^4.19.0"
   }
 }
