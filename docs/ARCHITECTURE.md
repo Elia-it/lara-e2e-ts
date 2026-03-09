@@ -116,22 +116,21 @@ Playwright HTML reports are uploaded directly to S3 and served via CloudFront. N
 ### Architecture
 
 ```
-Playwright CI  ──npx tsx──▶  scripts/upload-report.ts  ──▶  S3 (reports/)
-                                                         ──▶  CloudFront (public read)
+GitHub Actions (push/PR)   ──npx tsx──▶  upload-report.ts --scope=ci    ──▶  S3 (ci/)
+GitHub Actions (schedule)  ──npx tsx──▶  upload-report.ts --scope=cron  ──▶  S3 (reports/)
+                                                                         ──▶  CloudFront (public read)
 ```
 
-### How It Works
+### Two Scopes
 
-1. CI runs Playwright tests, producing `playwright-report/`.
-2. `scripts/upload-report.ts` uploads the entire report directory to S3 under `reports/{timestamp}_{branch}_{sha}/`.
-3. The script updates `reports/manifest.json` (run metadata) and regenerates `reports/index.html` (static dashboard).
-4. S3 lifecycle policy auto-deletes objects under `reports/` after 31 days.
-5. CloudFront with OAC provides public HTTPS access while keeping the S3 bucket private.
+- **`ci/`** — Ephemeral reports from push/PR workflows. Upload-only, no tracking. Just a URL for PR comments.
+- **`reports/`** — Scheduled monitoring runs. Maintains `manifest.json` + `index.html` dashboard. 31-day retention.
 
 ### Key Decisions
 
 - **No API server:** Playwright's HTML report is already an interactive dashboard. We just host it.
-- **No database:** `manifest.json` in S3 stores run metadata. The upload script prunes old entries.
+- **No database:** `manifest.json` in S3 stores cron run metadata. The upload script prunes old entries.
+- **Scope separation:** CI artifacts don't pollute the monitoring dashboard. Different lifecycle policies can be applied per prefix.
 - **S3 lifecycle for retention:** No cron jobs needed. AWS handles expiration automatically.
 - **CloudFront + OAC:** S3 stays fully private. CloudFront provides caching and HTTPS.
 

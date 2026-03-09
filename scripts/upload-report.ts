@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { appendFileSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, extname } from 'node:path';
 
 import {
@@ -17,19 +17,29 @@ const BUCKET = process.env.S3_BUCKET_NAME;
 const REGION = process.env.AWS_REGION || 'eu-west-1';
 const CLOUDFRONT_DOMAIN = process.env.CLOUDFRONT_DOMAIN;
 const REPORT_DIR = join(process.cwd(), 'playwright-report');
-const MANIFEST_KEY = 'reports/manifest.json';
-const INDEX_KEY = 'reports/index.html';
 const RETENTION_DAYS = 31;
 const UPLOAD_BATCH_SIZE = 20;
+
+type Scope = 'ci' | 'cron';
 
 /* ------------------------------------------------------------------ */
 /*  CLI args                                                           */
 /* ------------------------------------------------------------------ */
 
-function parseArgs(): { status: string } {
+function parseArgs(): { status: string; scope: Scope } {
   const statusArg = process.argv.find((a) => a.startsWith('--status='));
   const status = statusArg?.split('=')[1] || 'unknown';
-  return { status };
+
+  const scopeArg = process.argv.find((a) => a.startsWith('--scope='));
+  const scope = (scopeArg?.split('=')[1] || autoDetectScope()) as Scope;
+
+  return { status, scope };
+}
+
+function autoDetectScope(): Scope {
+  const event = process.env.GITHUB_EVENT_NAME;
+  if (event === 'schedule') return 'cron';
+  return 'ci';
 }
 
 /* ------------------------------------------------------------------ */
@@ -79,8 +89,13 @@ function walkDir(dir: string): string[] {
   return files;
 }
 
+function buildBaseUrl(): string {
+  const domain = CLOUDFRONT_DOMAIN || `${BUCKET}.s3.${REGION}.amazonaws.com`;
+  return `https://${domain}`;
+}
+
 /* ------------------------------------------------------------------ */
-/*  Manifest types                                                     */
+/*  Manifest types (cron scope only)                                   */
 /* ------------------------------------------------------------------ */
 
 interface ManifestEntry {
@@ -89,7 +104,6 @@ interface ManifestEntry {
   branch: string;
   sha: string;
   status: string;
-  trigger: string;
   url: string;
 }
 
@@ -123,7 +137,7 @@ async function uploadFile(
 async function downloadManifest(s3: S3Client): Promise<ManifestEntry[]> {
   try {
     const res = await s3.send(
-      new GetObjectCommand({ Bucket: BUCKET, Key: MANIFEST_KEY }),
+      new GetObjectCommand({ Bucket: BUCKET, Key: 'reports/manifest.json' }),
     );
     const text = await res.Body?.transformToString();
     return text ? (JSON.parse(text) as ManifestEntry[]) : [];
@@ -157,7 +171,7 @@ async function uploadReportFiles(s3: S3Client, prefix: string): Promise<number> 
 }
 
 /* ------------------------------------------------------------------ */
-/*  Index HTML generation                                              */
+/*  Index HTML generation (cron scope only)                            */
 /* ------------------------------------------------------------------ */
 
 function generateIndexHtml(entries: ManifestEntry[]): string {
@@ -175,7 +189,6 @@ function generateIndexHtml(entries: ManifestEntry[]): string {
           <td>${e.branch}</td>
           <td><code>${sha}</code></td>
           <td>${dot} ${e.status}</td>
-          <td>${e.trigger}</td>
           <td><a href="${e.url}">View Report</a></td>
         </tr>`;
     })
@@ -209,7 +222,7 @@ function generateIndexHtml(entries: ManifestEntry[]): string {
 </head>
 <body>
   <h1>Lara E2E Test Reports</h1>
-  <p class="subtitle">Auto-refreshes every 5 minutes. Reports are retained for ${RETENTION_DAYS} days.</p>
+  <p class="subtitle">Scheduled monitoring runs. Auto-refreshes every 5 minutes. Reports retained for ${RETENTION_DAYS} days.</p>
   ${
     entries.length === 0
       ? '<p class="empty">No reports yet.</p>'
@@ -220,7 +233,6 @@ function generateIndexHtml(entries: ManifestEntry[]): string {
           <th>Branch</th>
           <th>Commit</th>
           <th>Status</th>
-          <th>Trigger</th>
           <th>Report</th>
         </tr>
       </thead>
@@ -234,6 +246,90 @@ ${rows}
 }
 
 /* ------------------------------------------------------------------ */
+/*  Scope: CI (push / PR)                                              */
+/*  - Upload to ci/{timestamp}_{branch}_{sha}/                        */
+/*  - No manifest, no index — just upload and output the URL           */
+/* ------------------------------------------------------------------ */
+
+async function runCi(s3: S3Client, meta: RunMeta): Promise<void> {
+  const prefix = `ci/${meta.timestamp}_${meta.branch}_${meta.shortSha}/`;
+  const reportUrl = `${buildBaseUrl()}/${prefix}index.html`;
+
+  console.log(`[ci] Uploading report to s3://${BUCKET}/${prefix}...`);
+  const fileCount = await uploadReportFiles(s3, prefix);
+  console.log(`[ci] Uploaded ${fileCount} files.`);
+
+  console.log('');
+  console.log(`Report URL: ${reportUrl}`);
+  writeGithubOutput('report-url', reportUrl);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Scope: Cron (scheduled monitoring)                                 */
+/*  - Upload to reports/{timestamp}_{branch}_{sha}/                   */
+/*  - Update manifest.json and regenerate index.html                   */
+/*  - Prune entries older than 31 days                                 */
+/* ------------------------------------------------------------------ */
+
+async function runCron(s3: S3Client, meta: RunMeta): Promise<void> {
+  const prefix = `reports/${meta.timestamp}_${meta.branch}_${meta.shortSha}/`;
+  const reportUrl = `${buildBaseUrl()}/${prefix}index.html`;
+
+  // 1. Upload report files
+  console.log(`[cron] Uploading report to s3://${BUCKET}/${prefix}...`);
+  const fileCount = await uploadReportFiles(s3, prefix);
+  console.log(`[cron] Uploaded ${fileCount} files.`);
+
+  // 2. Update manifest
+  console.log('[cron] Updating manifest...');
+  const manifest = await downloadManifest(s3);
+
+  manifest.unshift({
+    prefix,
+    timestamp: new Date().toISOString(),
+    branch: meta.branch,
+    sha: meta.sha,
+    status: meta.status,
+    url: reportUrl,
+  });
+
+  const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const pruned = manifest.filter((e) => new Date(e.timestamp).getTime() > cutoff);
+
+  await uploadFile(s3, 'reports/manifest.json', JSON.stringify(pruned, null, 2), 'application/json');
+  console.log(`[cron] Manifest updated (${pruned.length} entries, pruned ${manifest.length - pruned.length}).`);
+
+  // 3. Generate and upload index page
+  console.log('[cron] Generating index page...');
+  const indexHtml = generateIndexHtml(pruned);
+  await uploadFile(s3, 'reports/index.html', indexHtml, 'text/html', 'no-cache');
+
+  console.log('');
+  console.log(`Report URL: ${reportUrl}`);
+  console.log(`Dashboard:  ${buildBaseUrl()}/reports/index.html`);
+  writeGithubOutput('report-url', reportUrl);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Shared                                                             */
+/* ------------------------------------------------------------------ */
+
+interface RunMeta {
+  status: string;
+  scope: Scope;
+  branch: string;
+  sha: string;
+  shortSha: string;
+  timestamp: string;
+}
+
+function writeGithubOutput(key: string, value: string): void {
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -243,70 +339,35 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const { status } = parseArgs();
+  const { status, scope } = parseArgs();
   const branch = process.env.GITHUB_REF_NAME || gitValue('git branch --show-current');
   const sha = process.env.GITHUB_SHA || gitValue('git rev-parse HEAD');
-  const shortSha = sha.substring(0, 7);
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace('Z', 'Z');
-  const trigger = process.env.GITHUB_ACTIONS ? 'ci' : 'manual';
-  const prefix = `reports/${timestamp}_${branch}_${shortSha}/`;
 
-  const domain = CLOUDFRONT_DOMAIN || `${BUCKET}.s3.${REGION}.amazonaws.com`;
-  const protocol = CLOUDFRONT_DOMAIN ? 'https' : 'https';
-  const reportUrl = `${protocol}://${domain}/${prefix}index.html`;
-
-  const s3 = createS3Client();
+  const meta: RunMeta = {
+    status,
+    scope,
+    branch,
+    sha,
+    shortSha: sha.substring(0, 7),
+    timestamp: new Date().toISOString().replace(/[:.]/g, '-').replace('Z', 'Z'),
+  };
 
   // Verify report directory exists
   try {
     statSync(REPORT_DIR);
   } catch {
-    console.error(`Error: playwright-report/ directory not found. Run tests first.`);
+    console.error('Error: playwright-report/ directory not found. Run tests first.');
     process.exit(1);
   }
 
-  // 1. Upload report files
-  console.log(`Uploading report to s3://${BUCKET}/${prefix}...`);
-  const fileCount = await uploadReportFiles(s3, prefix);
-  console.log(`Uploaded ${fileCount} files.`);
+  console.log(`Scope: ${scope} | Branch: ${branch} | Status: ${status}`);
 
-  // 2. Update manifest
-  console.log('Updating manifest...');
-  const manifest = await downloadManifest(s3);
+  const s3 = createS3Client();
 
-  const entry: ManifestEntry = {
-    prefix,
-    timestamp: new Date().toISOString(),
-    branch,
-    sha,
-    status,
-    trigger,
-    url: reportUrl,
-  };
-
-  manifest.unshift(entry);
-
-  // Prune entries older than retention period
-  const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
-  const pruned = manifest.filter((e) => new Date(e.timestamp).getTime() > cutoff);
-
-  await uploadFile(s3, MANIFEST_KEY, JSON.stringify(pruned, null, 2), 'application/json');
-  console.log(`Manifest updated (${pruned.length} entries, pruned ${manifest.length - pruned.length}).`);
-
-  // 3. Generate and upload index page
-  console.log('Generating index page...');
-  const indexHtml = generateIndexHtml(pruned);
-  await uploadFile(s3, INDEX_KEY, indexHtml, 'text/html', 'no-cache');
-
-  // 4. Output report URL
-  console.log('');
-  console.log(`Report URL: ${reportUrl}`);
-  console.log(`Dashboard:  ${protocol}://${domain}/reports/index.html`);
-
-  // Write URL to GitHub output if running in CI
-  if (process.env.GITHUB_OUTPUT) {
-    const { appendFileSync } = await import('node:fs');
-    appendFileSync(process.env.GITHUB_OUTPUT, `report-url=${reportUrl}\n`);
+  if (scope === 'cron') {
+    await runCron(s3, meta);
+  } else {
+    await runCi(s3, meta);
   }
 }
 

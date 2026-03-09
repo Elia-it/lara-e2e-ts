@@ -78,8 +78,10 @@ To enable a project, uncomment it in `playwright.config.ts` and update `.github/
 ### S3 Report Storage
 - Playwright HTML reports are uploaded to S3 and served via CloudFront.
 - Upload script: `scripts/upload-report.ts` — single file, no API server needed.
-- **S3 keys:** `reports/{timestamp}_{branch}_{sha}/` per run, plus `reports/manifest.json` and `reports/index.html`.
-- **Retention:** 31-day auto-expiration via S3 lifecycle policy. Manifest is pruned on each upload.
+- **Two scopes** with separate S3 prefixes:
+  - `ci/` — GitHub Actions (push/PR). Upload-only, no manifest or index. Ephemeral.
+  - `reports/` — Scheduled cron runs. Maintains `manifest.json` and `index.html` dashboard. 31-day retention.
+- Scope is auto-detected from `GITHUB_EVENT_NAME` or passed via `--scope=ci|cron`.
 - **Access:** S3 bucket is private. CloudFront with OAC provides public read access.
 - **Config:** `S3_BUCKET_NAME`, `AWS_REGION`, `CLOUDFRONT_DOMAIN` from environment. Never hardcode credentials.
 
