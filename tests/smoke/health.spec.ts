@@ -23,6 +23,6 @@ test.describe('Smoke Tests', () => {
     await translatePage.translate('Hello world!');
 
     const output = translatePage.editor.getTranslation();
-    await expect(output).toContainText('Force Fail');
+    await expect(output).toContainText('Ciao mondo!');
   });
 });
