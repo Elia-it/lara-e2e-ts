@@ -11,7 +11,12 @@
     "test:debug": "npx playwright test --debug",
     "test:ui": "npx playwright test --ui",
     "report": "npx playwright show-report",
-    "codegen": "npx playwright codegen"
+    "codegen": "npx playwright codegen",
+    "report:upload": "npx tsx scripts/upload-report.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.750.0",
+    "tsx": "^4.19.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

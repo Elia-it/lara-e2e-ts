@@ -16,7 +16,9 @@ tests/
   smoke/        - Smoke / health-check specs
   translate/    - Translation feature specs
   <feature>/    - One folder per feature domain
-docs/           - Architecture, conventions, writing-tests guides
+scripts/
+  upload-report.ts  - Upload Playwright report to S3, update manifest and index page
+docs/               - Architecture, conventions, writing-tests, report storage
 ```
 
 ## Key Patterns
@@ -73,13 +75,28 @@ Currently only `desktop-chrome` (1920x1080) is active. 7 additional projects are
 
 To enable a project, uncomment it in `playwright.config.ts` and update `.github/workflows/e2e.yml` to install the required browser.
 
+### S3 Report Storage
+- Playwright HTML reports are uploaded to S3 and served via CloudFront.
+- Upload script: `scripts/upload-report.ts` — single file, no API server needed.
+- **Two scopes** with separate S3 prefixes:
+  - `ci/` — GitHub Actions (push/PR). Upload-only, no manifest or index. Ephemeral.
+  - `reports/` — Scheduled cron runs. Maintains `manifest.json` and `index.html` dashboard. 31-day retention.
+- Scope is auto-detected from `GITHUB_EVENT_NAME` or passed via `--scope=ci|cron`.
+- **Access:** S3 bucket is private. CloudFront with OAC provides public read access.
+- **Config:** `S3_BUCKET_NAME`, `AWS_REGION`, `CLOUDFRONT_DOMAIN` from environment. Never hardcode credentials.
+
 ## Commands
+
+### E2E Tests
 - `npm test` - Run all tests
 - `npm run test:chromium` - Run on desktop-chrome only
 - `npm run test:smoke` - Run smoke tests only
 - `npm run test:debug` - Debug mode with inspector
 - `npm run test:ui` - Playwright UI mode
 - `npm run codegen` - Open Playwright codegen
+
+### Report Upload
+- `npm run report:upload -- --status=passed` - Upload Playwright report to S3
 
 ## Rules
 - NEVER allow GA4 or tracking requests to reach external services during tests. All analytics must be blocked via `blocked-routes.config.ts`.
@@ -91,3 +108,5 @@ To enable a project, uncomment it in `playwright.config.ts` and update `.github/
 - ALWAYS add new page objects to the fixtures before using them in tests.
 - ALWAYS group tests by feature domain in separate folders under `tests/`.
 - Keep spec files focused — one feature or user flow per file.
+- NEVER hardcode AWS credentials or S3 bucket names. Use environment variables.
+- ALWAYS store timestamps as ISO 8601 strings in UTC.

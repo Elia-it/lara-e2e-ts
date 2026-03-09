@@ -109,6 +109,33 @@ Exception: `locator('#id')` is used inside `TranslatorEditorComponent` for langu
 ### Geo-Independent Tests
 The app auto-detects target language based on the runner's location (e.g., Italian in Italy, German in Frankfurt). Translation tests must always explicitly set both source and target languages to ensure deterministic results regardless of where CI runs.
 
+## S3 Report Storage
+
+Playwright HTML reports are uploaded directly to S3 and served via CloudFront. No API server or database needed.
+
+### Architecture
+
+```
+GitHub Actions (push/PR)   ──npx tsx──▶  upload-report.ts --scope=ci    ──▶  S3 (ci/)
+GitHub Actions (schedule)  ──npx tsx──▶  upload-report.ts --scope=cron  ──▶  S3 (reports/)
+                                                                         ──▶  CloudFront (public read)
+```
+
+### Two Scopes
+
+- **`ci/`** — Ephemeral reports from push/PR workflows. Upload-only, no tracking. Just a URL for PR comments.
+- **`reports/`** — Scheduled monitoring runs. Maintains `manifest.json` + `index.html` dashboard. 31-day retention.
+
+### Key Decisions
+
+- **No API server:** Playwright's HTML report is already an interactive dashboard. We just host it.
+- **No database:** `manifest.json` in S3 stores cron run metadata. The upload script prunes old entries.
+- **Scope separation:** CI artifacts don't pollute the monitoring dashboard. Different lifecycle policies can be applied per prefix.
+- **S3 lifecycle for retention:** No cron jobs needed. AWS handles expiration automatically.
+- **CloudFront + OAC:** S3 stays fully private. CloudFront provides caching and HTTPS.
+
+See [Report Storage docs](REPORT-STORAGE.md) for the full setup and usage guide.
+
 ## Folder Conventions
 
 | Path | Purpose | Naming |
@@ -119,3 +146,4 @@ The app auto-detects target language based on the runner's location (e.g., Itali
 | `src/helpers/` | API clients, data builders | `<name>.helper.ts` |
 | `src/config/` | Environment, constants | `<name>.config.ts` |
 | `tests/<feature>/` | Spec files grouped by domain | `<name>.spec.ts` |
+| `scripts/` | Build/upload scripts | `upload-report.ts` |
