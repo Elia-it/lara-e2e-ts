@@ -54,6 +54,14 @@ function gitValue(command: string): string {
   }
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 const CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html',
   '.js': 'application/javascript',
@@ -183,13 +191,13 @@ function generateIndexHtml(entries: ManifestEntry[]): string {
         timeZone: 'UTC',
       });
       const dot = e.status === 'passed' ? '&#x1F7E2;' : '&#x1F534;';
-      const sha = e.sha.substring(0, 7);
+      const sha = escapeHtml(e.sha.substring(0, 7));
       return `        <tr>
-          <td>${date}</td>
-          <td>${e.branch}</td>
+          <td>${escapeHtml(date)}</td>
+          <td>${escapeHtml(e.branch)}</td>
           <td><code>${sha}</code></td>
-          <td>${dot} ${e.status}</td>
-          <td><a href="${e.url}">View Report</a></td>
+          <td>${dot} ${escapeHtml(e.status)}</td>
+          <td><a href="${escapeHtml(e.url)}">View Report</a></td>
         </tr>`;
     })
     .join('\n');

@@ -75,7 +75,7 @@ npx tsx scripts/upload-report.ts --status=failed --scope=cron
 
 1. Create an S3 bucket and configure lifecycle policies (e.g., 7 days for `ci/`, 31 days for `reports/`).
 2. Create a CloudFront distribution with OAC pointing to the bucket.
-3. Create an IAM user with `s3:PutObject`, `s3:GetObject`, `s3:ListBucket`, `s3:DeleteObject` permissions on the bucket.
+3. Create an IAM user with `s3:PutObject` and `s3:GetObject` permissions on the bucket.
 4. Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `S3_BUCKET_NAME`, and `CLOUDFRONT_DOMAIN` to `.env` (local) or GitHub Actions secrets (CI).
 
 ## Local Usage
