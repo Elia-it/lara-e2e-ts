@@ -34,7 +34,7 @@ export default defineConfig({
         viewport: { width: 1920, height: 1080 },
       },
     },
-    /*{
+    {
       name: 'desktop-safari',
       use: {
         ...devices['Desktop Safari'],
@@ -91,6 +91,6 @@ export default defineConfig({
         ...devices['Pixel 7'],
         viewport: { width: 360, height: 800 },
       },
-    },*/
+    },
   ],
 });
