@@ -1559,7 +1559,7 @@ function generateDashboardHtml(
         for (var ri = 0; ri < runs.length; ri++) { if (runs[ri].status === 'passed') passedRuns++; }
 
         html += '<div class="ci-branch-group' + (gi === 0 ? ' expanded' : '') + '" data-branch="' + esc(branch) + '">';
-        html += '<div class="day-group-header" tabindex="0" role="button" onclick="this.parentElement.classList.toggle(\'expanded\')">';
+        html += '<div class="day-group-header" tabindex="0" role="button" onclick="toggleDay(this)">';
         html += '<div class="day-status-bar ' + barCls + '"></div>';
         html += '<div class="day-info"><div class="day-title"><code style="font-size:0.9375rem">' + esc(branch) + '</code></div>';
         html += '<div class="day-summary">';
