@@ -303,9 +303,10 @@ function generateDashboardHtml(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="refresh" content="300">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath fill='%234647B9' d='M20 2.823C29.486 2.823 37.177 10.514 37.177 20S29.486 37.177 20 37.177 2.823 29.486 2.823 20C2.835 10.518 10.518 2.835 20 2.823ZM20 0C8.955 0 0 8.955 0 20s8.955 20 20 20 20-8.955 20-20S31.042 0 20 0Z'/%3E%3Cpath fill='%234647B9' d='M25.556 16.487a2.103 2.103 0 1 0 0-4.206 2.103 2.103 0 0 0 0 4.206Z'/%3E%3Cpath fill='%234647B9' d='M13.645 29.183V11.258h3.122v15.07h8.975v2.851h-12.1v.004Z'/%3E%3C/svg%3E">
   <title>Lara E2E Status</title>
   <style>
-    :root {
+    :root, [data-theme="light"] {
       --bg: #ffffff;
       --bg-secondary: #f6f8fa;
       --fg: #1f2328;
@@ -329,7 +330,7 @@ function generateDashboardHtml(
     }
 
     @media (prefers-color-scheme: dark) {
-      :root {
+      :root:not([data-theme="light"]) {
         --bg: #0d1117;
         --bg-secondary: #161b22;
         --fg: #e6edf3;
@@ -350,6 +351,28 @@ function generateDashboardHtml(
         --hover: #1c2128;
         --shadow: 0 1px 3px rgba(0,0,0,0.2);
       }
+    }
+
+    [data-theme="dark"] {
+      --bg: #0d1117;
+      --bg-secondary: #161b22;
+      --fg: #e6edf3;
+      --fg-muted: #8b949e;
+      --border: #30363d;
+      --border-light: #21262d;
+      --link: #58a6ff;
+      --green: #3fb950;
+      --green-bg: #0d2818;
+      --green-bar: #238636;
+      --red: #f85149;
+      --red-bg: #3d1214;
+      --red-bar: #da3633;
+      --yellow: #d29922;
+      --yellow-bg: #2e1f00;
+      --yellow-bar: #9e6a03;
+      --gray-bar: #30363d;
+      --hover: #1c2128;
+      --shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -373,12 +396,91 @@ function generateDashboardHtml(
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 2rem;
+      margin-bottom: 1.25rem;
     }
     .header h1 {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
       font-size: 1.5rem;
       font-weight: 700;
       letter-spacing: -0.02em;
+    }
+    .header-logo {
+      height: 2.25rem;
+      width: auto;
+      flex-shrink: 0;
+    }
+    .header-brand-group {
+      display: flex;
+      flex-direction: column;
+      line-height: 1;
+    }
+    .header-brand {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+    .header-byline {
+      font-size: 0.625rem;
+      font-weight: 400;
+      color: var(--fg-muted);
+      letter-spacing: 0.02em;
+      margin-top: 0.125rem;
+    }
+    .header-separator {
+      width: 1px;
+      height: 1.75rem;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .header-subtitle {
+      font-size: 0.9375rem;
+      font-weight: 500;
+      color: var(--fg-muted);
+      letter-spacing: 0;
+    }
+    .theme-switch {
+      position: fixed;
+      top: 1.25rem;
+      right: 1.25rem;
+      z-index: 100;
+      cursor: pointer;
+    }
+    .theme-switch input { display: none; }
+    .theme-switch-track {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 48px;
+      height: 26px;
+      padding: 0 6px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .theme-switch:hover .theme-switch-track { border-color: var(--fg-muted); }
+    .theme-switch-sun, .theme-switch-moon {
+      font-size: 0.6875rem;
+      line-height: 1;
+      position: relative;
+      z-index: 1;
+    }
+    .theme-switch-thumb {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: var(--fg);
+      border-radius: 50%;
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      opacity: 0.15;
+    }
+    .theme-switch input:checked + .theme-switch-track .theme-switch-thumb {
+      transform: translateX(22px);
     }
     .header-meta {
       font-size: 0.75rem;
@@ -390,7 +492,7 @@ function generateDashboardHtml(
       display: flex;
       gap: 0;
       border-bottom: 1px solid var(--border);
-      margin-bottom: 2rem;
+      margin-bottom: 1.25rem;
     }
     .tab {
       padding: 0.625rem 1rem;
@@ -429,9 +531,9 @@ function generateDashboardHtml(
       display: flex;
       align-items: center;
       gap: 0.875rem;
-      padding: 1.25rem 1.5rem;
+      padding: 1rem 1.25rem;
       border-radius: var(--radius);
-      margin-bottom: 2rem;
+      margin-bottom: 1.25rem;
       border: 1px solid var(--border-light);
     }
     .status-banner.operational {
@@ -470,12 +572,12 @@ function generateDashboardHtml(
       text-transform: uppercase;
       letter-spacing: 0.04em;
       color: var(--fg-muted);
-      margin-bottom: 1rem;
+      margin-bottom: 0.75rem;
     }
 
     /* Uptime section */
     .uptime-section {
-      margin-bottom: 2.5rem;
+      margin-bottom: 1.5rem;
     }
     .device-uptime {
       padding: 1rem 0;
@@ -509,7 +611,8 @@ function generateDashboardHtml(
       transition: opacity 0.1s, transform 0.1s;
       min-width: 0;
     }
-    .day-block:hover { opacity: 0.8; transform: scaleY(1.1); }
+    .uptime-bar:hover .day-block:not(.empty) { opacity: 0.35; }
+    .uptime-bar:hover .day-block:not(.empty):hover { opacity: 1; transform: scaleY(1.1); }
     .day-block.passed { background: var(--green-bar); }
     .day-block.failed { background: var(--red-bar); }
     .day-block.mixed { background: var(--yellow-bar); }
@@ -552,7 +655,7 @@ function generateDashboardHtml(
     .day-block:hover .tooltip { display: block; }
 
     /* Day groups */
-    .days-section { margin-bottom: 2rem; }
+    .days-section { margin-bottom: 1.5rem; }
     .day-group {
       border: 1px solid var(--border-light);
       border-radius: var(--radius);
@@ -724,7 +827,7 @@ function generateDashboardHtml(
 
     /* Device status grid */
     .status-grid {
-      margin-bottom: 2.5rem;
+      margin-bottom: 1.5rem;
     }
     .status-grid-cards {
       display: grid;
@@ -803,34 +906,7 @@ function generateDashboardHtml(
       font-size: 0.875rem;
     }
 
-    /* CI tab simplified table */
-    .ci-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.8125rem;
-    }
-    .ci-table th {
-      text-align: left;
-      padding: 0.625rem 0.75rem;
-      font-weight: 600;
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-      color: var(--fg-muted);
-      border-bottom: 1px solid var(--border);
-    }
-    .ci-table td {
-      padding: 0.625rem 0.75rem;
-      border-bottom: 1px solid var(--border-light);
-    }
-    .ci-table tr:hover td { background: var(--hover); }
-    .ci-table a { color: var(--link); text-decoration: none; }
-    .ci-table a:hover { text-decoration: underline; }
-    .ci-status {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.375rem;
-    }
+    /* (CI table styles removed — CI now uses branch-grouped cards) */
 
     /* Legend */
     .legend {
@@ -880,6 +956,20 @@ function generateDashboardHtml(
     }
     .toggle-all-btn:hover { background: var(--hover); }
 
+    /* CI branch groups (reuse day-group expand pattern) */
+    .ci-branch-group {
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      margin-bottom: 0.625rem;
+      overflow: hidden;
+      transition: border-color 0.15s;
+    }
+    .ci-branch-group:hover { border-color: var(--border); }
+    .ci-branch-group .day-body { display: none; }
+    .ci-branch-group.expanded .day-body { display: block; }
+    .ci-branch-group .day-chevron { transition: transform 0.2s; }
+    .ci-branch-group.expanded .day-chevron { transform: rotate(90deg); }
+
     /* CI filter input */
     #ci-filter {
       width: 100%;
@@ -910,8 +1000,35 @@ function generateDashboardHtml(
       padding: 0.5rem 1rem 0.75rem 2rem;
     }
 
+    /* Drill-down divider */
+    .drilldown-divider {
+      border: none;
+      border-top: 1px dashed var(--border);
+      margin: 1.5rem 0 1rem;
+    }
+
+    /* Collapsible section */
+    .collapsible-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      margin-bottom: 0.75rem;
+    }
+    .collapsible-header:hover .section-header { color: var(--fg); }
+    .collapsible-header .section-header { margin-bottom: 0; transition: color 0.15s; }
+    .collapsible-chevron {
+      font-size: 0.75rem;
+      color: var(--fg-muted);
+      transition: transform 0.2s;
+    }
+    .collapsible-section.collapsed .collapsible-body { display: none; }
+    .collapsible-section.collapsed .collapsible-chevron { transform: rotate(0deg); }
+    .collapsible-section .collapsible-chevron { transform: rotate(90deg); }
+
     /* Failures section */
-    .failures-section { margin-bottom: 2.5rem; }
+    .failures-section { margin-bottom: 1.5rem; }
     .failure-device {
       padding: 0.75rem 0;
       border-bottom: 1px solid var(--border-light);
@@ -921,16 +1038,25 @@ function generateDashboardHtml(
       display: flex;
       align-items: center;
       justify-content: space-between;
+      margin-bottom: 0.375rem;
     }
     .failure-name { font-size: 0.875rem; font-weight: 500; }
     .failure-ratio { font-size: 0.75rem; color: var(--red); font-weight: 600; }
-    .failure-links {
-      margin-top: 0.375rem;
+    .failure-table {
+      width: 100%;
+      border-collapse: collapse;
       font-size: 0.6875rem;
+    }
+    .failure-table td {
+      padding: 0.25rem 0;
       color: var(--fg-muted);
     }
-    .failure-links a { color: var(--link); text-decoration: none; }
-    .failure-links a:hover { text-decoration: underline; }
+    .failure-date { width: auto; }
+    .failure-date a { color: var(--link); text-decoration: none; }
+    .failure-date a:hover { text-decoration: underline; }
+    .failure-count { text-align: right; white-space: nowrap; }
+    .failure-count .failed-count { color: var(--red); font-weight: 600; }
+    .failure-more { color: var(--fg-muted); padding-top: 0.125rem; }
 
     /* Duration */
     .run-duration {
@@ -959,7 +1085,7 @@ function generateDashboardHtml(
 <body>
   <div class="container">
     <div class="header">
-      <h1>Lara E2E Status</h1>
+      <h1><svg class="header-logo" viewBox="0 0 40 40" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M20 2.82339C29.4861 2.82339 37.1766 10.5139 37.1766 20C37.1766 29.4861 29.4861 37.1766 20 37.1766C10.5139 37.1766 2.82339 29.4861 2.82339 20C2.8352 10.5178 10.5178 2.8352 20 2.82339ZM20 0C8.95451 0 0 8.95452 0 20C0 31.0455 8.95451 40 20 40C31.0455 40 40 31.0455 40 20C40 8.95452 31.0415 0 20 0Z"/><path d="M25.5559 16.4868C26.7172 16.4868 27.6587 15.5454 27.6587 14.384C27.6587 13.2227 26.7172 12.2812 25.5559 12.2812C24.3946 12.2812 23.4531 13.2227 23.4531 14.384C23.4531 15.5454 24.3946 16.4868 25.5559 16.4868Z"/><path d="M13.6445 29.1826V11.2578H16.7672V26.3277H25.7414V29.1787H13.6445V29.1826Z"/></svg><span class="header-brand-group"><span class="header-brand">Lara</span><span class="header-byline">by translated.</span></span><span class="header-separator"></span><span class="header-subtitle">E2E Status</span></h1>
       <span class="header-meta">Updated <time id="generated-at">${generatedAt}</time> &middot; Auto-refreshes every 5 min</span>
     </div>
 
@@ -971,6 +1097,15 @@ function generateDashboardHtml(
     <div class="tab-panel active" id="panel-schedule"></div>
     <div class="tab-panel" id="panel-ci"></div>
   </div>
+
+  <label class="theme-switch" aria-label="Toggle theme">
+    <input type="checkbox" id="theme-checkbox" onchange="toggleTheme(this.checked)">
+    <span class="theme-switch-track">
+      <span class="theme-switch-sun">&#x2600;&#xFE0E;</span>
+      <span class="theme-switch-moon">&#x263E;</span>
+      <span class="theme-switch-thumb"></span>
+    </span>
+  </label>
 
   <script type="application/json" id="data-cron">${cronJson}</script>
   <script type="application/json" id="data-ci">${ciJson}</script>
@@ -1083,9 +1218,30 @@ function generateDashboardHtml(
       var allPassed = latest.status === 'passed';
       var cls = allPassed ? 'operational' : 'down';
       var icon = allPassed ? '&#x2705;' : '&#x1F6A8;';
-      var title = allPassed ? 'All Systems Operational' : 'Issues Detected';
+
+      /* Build a specific failure summary from device data */
+      var title, detail = '';
+      if (allPassed) {
+        title = 'All Systems Operational';
+      } else if (latest.devices) {
+        var failedDevices = [];
+        var totalFailed = 0;
+        var devKeys = Object.keys(latest.devices);
+        for (var i = 0; i < devKeys.length; i++) {
+          var r = latest.devices[devKeys[i]];
+          if (r.failed > 0) {
+            failedDevices.push(deviceLabel(devKeys[i]));
+            totalFailed += r.failed;
+          }
+        }
+        title = totalFailed + ' test' + (totalFailed > 1 ? 's' : '') + ' failing';
+        detail = ' on ' + esc(failedDevices.join(', '));
+      } else {
+        title = 'Issues Detected';
+      }
+
       var sub = 'Last run ' + timeAgo(latest.timestamp) + ' &middot; ' + esc(formatDate(latest.timestamp)) + ' ' + esc(formatTime(latest.timestamp)) + ' UTC';
-      return '<div class="status-banner ' + cls + '"><span class="status-icon">' + icon + '</span><div class="status-text"><h2>' + title + '</h2><p>' + sub + '</p></div></div>';
+      return '<div class="status-banner ' + cls + '"><span class="status-icon">' + icon + '</span><div class="status-text"><h2>' + title + '<span style="font-weight:400;font-size:0.875rem;color:var(--fg-muted)">' + detail + '</span></h2><p>' + sub + '</p></div></div>';
     }
 
     /* ---- Device status grid ---- */
@@ -1235,7 +1391,8 @@ function generateDashboardHtml(
 
         var pct = totalRuns > 0 ? ((passedRuns / totalRuns) * 100).toFixed(1) : '---';
         var pctDisplay = pct === '---' ? 'N/A' : pct + '%';
-        var pctColor = pct === '100.0' ? 'var(--green)' : pct === '---' ? 'var(--fg-muted)' : 'var(--red)';
+        var pctNum = parseFloat(pct);
+        var pctColor = pct === '---' ? 'var(--fg-muted)' : pctNum >= 100 ? 'var(--green)' : pctNum >= 90 ? 'var(--yellow)' : 'var(--red)';
 
         html += '<div class="device-uptime">';
         html += '<div class="device-uptime-header"><span class="device-name">' + esc(deviceLabel(dev)) + '</span><span class="device-uptime-pct" style="color:' + pctColor + '">' + pctDisplay + '</span></div>';
@@ -1255,7 +1412,10 @@ function generateDashboardHtml(
       }
 
       var grouped = groupByDay(entries);
-      var html = '<div class="days-section"><div class="section-header" style="display:flex;align-items:center;justify-content:space-between">Run History<button class="toggle-all-btn" onclick="toggleAllDays(this)">Expand all</button></div>';
+      var html = '<div class="days-section collapsible-section collapsed">';
+      html += '<div class="collapsible-header" onclick="toggleCollapsible(this)" tabindex="0" role="button"><div class="section-header">Run History</div><span class="collapsible-chevron">&#x25B6;</span></div>';
+      html += '<div class="collapsible-body">';
+      html += '<div style="display:flex;justify-content:flex-end;margin-bottom:0.75rem"><button class="toggle-all-btn" onclick="toggleAllDays(this)">Expand all</button></div>';
 
       for (var gi = 0; gi < grouped.order.length; gi++) {
         var day = grouped.order[gi];
@@ -1331,63 +1491,115 @@ function generateDashboardHtml(
         html += '</div></div>';
       }
 
-      html += '</div>';
+      html += '</div></div>';
       return html;
     }
 
-    /* ---- CI table ---- */
-    function renderCiTable(entries) {
+    /* ---- CI: group entries by branch ---- */
+    function groupByBranch(entries) {
+      var groups = {};
+      var order = [];
+      for (var i = 0; i < entries.length; i++) {
+        var branch = entries[i].branch;
+        if (!groups[branch]) { groups[branch] = []; order.push(branch); }
+        groups[branch].push(entries[i]);
+      }
+      return { groups: groups, order: order };
+    }
+
+    /* ---- CI summary ---- */
+    function renderCiSummary(entries) {
+      if (entries.length === 0) return '';
+      var branches = {};
+      for (var i = 0; i < entries.length; i++) branches[entries[i].branch] = true;
+      var branchCount = Object.keys(branches).length;
+      var passCount = 0;
+      for (var i = 0; i < entries.length; i++) { if (entries[i].status === 'passed') passCount++; }
+      var failCount = entries.length - passCount;
+      var summary = entries.length + ' run' + (entries.length > 1 ? 's' : '') + ' across ' + branchCount + ' branch' + (branchCount > 1 ? 'es' : '');
+      if (failCount > 0) summary += ' &middot; <span style="color:var(--red);font-weight:600">' + failCount + ' failed</span>';
+      return '<div style="font-size:0.8125rem;color:var(--fg-muted);margin-bottom:1.25rem">' + summary + '</div>';
+    }
+
+    /* ---- CI grouped view ---- */
+    function renderCiGroups(entries) {
       if (entries.length === 0) {
         return '<div class="empty-state"><p>No CI reports yet.</p></div>';
       }
 
-      var html = '<div style="margin-bottom:0.75rem"><input type="text" id="ci-filter" placeholder="Filter by branch..." oninput="filterCiTable()" /></div>';
-      html += '<table class="ci-table"><thead><tr><th style="width:1.5rem"></th><th>Date (UTC)</th><th>Branch</th><th>Commit</th><th>Status</th><th>Report</th></tr></thead><tbody>';
+      var html = '<div style="margin-bottom:0.75rem"><input type="text" id="ci-filter" placeholder="Filter by branch..." oninput="filterCiBranches()" /></div>';
 
-      for (var i = 0; i < entries.length; i++) {
-        var e = entries[i];
-        var dateStr = esc(formatDate(e.timestamp)) + ', ' + esc(formatTime(e.timestamp));
-        var sha = esc(e.sha.substring(0, 7));
-        var dot = e.status === 'passed' ? '<span style="color:var(--green)">&#x2714;</span>' : '<span style="color:var(--red)">&#x2716;</span>';
-        var hasDevices = e.devices && Object.keys(e.devices).length > 0;
-        var rowId = 'ci-row-' + i;
-        var durStr = e.durationMs ? ' &middot; ' + formatDuration(e.durationMs) : '';
+      var grouped = groupByBranch(entries);
 
-        html += '<tr class="ci-row' + (hasDevices ? ' expandable' : '') + '" data-branch="' + esc(e.branch) + '" data-detail="' + rowId + '"' + (hasDevices ? ' onclick="toggleCiRow(\'' + rowId + '\')"' : '') + '>';
-        html += '<td>' + (hasDevices ? '<span class="ci-chevron" id="chev-' + rowId + '">&#x25B6;</span>' : '') + '</td>';
-        html += '<td>' + dateStr + durStr + '</td>';
-        html += '<td><code>' + esc(e.branch) + '</code></td>';
-        html += '<td><code>' + sha + '</code></td>';
-        html += '<td><span class="ci-status">' + dot + ' ' + esc(e.status) + '</span></td>';
-        html += '<td><a href="' + esc(e.url) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View</a></td>';
-        html += '</tr>';
+      for (var gi = 0; gi < grouped.order.length; gi++) {
+        var branch = grouped.order[gi];
+        var runs = grouped.groups[branch];
+        var latestStatus = runs[0].status;
+        var barCls = latestStatus === 'passed' ? 'passed' : 'failed';
+        var passedRuns = 0;
+        for (var ri = 0; ri < runs.length; ri++) { if (runs[ri].status === 'passed') passedRuns++; }
 
-        if (hasDevices) {
-          html += '<tr class="ci-detail-row" id="' + rowId + '" style="display:none" data-parent="' + rowId + '">';
-          html += '<td colspan="6"><div class="ci-detail-content">';
-          var devKeys = Object.keys(e.devices);
-          for (var di = 0; di < devKeys.length; di++) {
-            var dev = devKeys[di], r = e.devices[dev];
-            var devFailed = r.failed > 0;
-            var devIcon = devFailed ? '&#x2716;' : '&#x2714;';
-            var devIconColor = devFailed ? 'var(--red)' : 'var(--green)';
-            var devCounts = r.passed + ' passed';
-            if (r.failed) devCounts += ', <span class="failed-count">' + r.failed + ' failed</span>';
-            if (r.flaky) devCounts += ', <span class="flaky-count">' + r.flaky + ' flaky</span>';
-            if (r.skipped) devCounts += ', ' + r.skipped + ' skipped';
-            if (r.durationMs) devCounts += ' &middot; ' + formatDuration(r.durationMs);
+        html += '<div class="ci-branch-group' + (gi === 0 ? ' expanded' : '') + '" data-branch="' + esc(branch) + '">';
+        html += '<div class="day-group-header" tabindex="0" role="button" onclick="this.parentElement.classList.toggle(\'expanded\')">';
+        html += '<div class="day-status-bar ' + barCls + '"></div>';
+        html += '<div class="day-info"><div class="day-title"><code style="font-size:0.9375rem">' + esc(branch) + '</code></div>';
+        html += '<div class="day-summary">';
+        if (runs.length - passedRuns > 0) html += '<span class="day-badge fail">' + (runs.length - passedRuns) + ' failed</span>';
+        if (passedRuns > 0) html += '<span class="day-badge ok">' + passedRuns + ' passed</span>';
+        html += '<span style="color:var(--fg-muted)">&middot; ' + runs.length + ' run' + (runs.length > 1 ? 's' : '') + '</span>';
+        html += '</div></div>';
+        html += '<span class="day-chevron">&#x25B6;</span>';
+        html += '</div>';
 
-            html += '<div class="device-row">';
-            html += '<span class="device-status-icon" style="color:' + devIconColor + '">' + devIcon + '</span>';
-            html += '<span class="device-label">' + esc(deviceLabel(dev)) + '</span>';
-            html += '<span class="device-counts">' + devCounts + '</span>';
+        html += '<div class="day-body">';
+        for (var ri = 0; ri < runs.length; ri++) {
+          var e = runs[ri];
+          var dotCls = e.status === 'passed' ? 'passed' : e.status === 'failed' ? 'failed' : 'unknown';
+          var timeStr = esc(formatTime(e.timestamp)) + ' UTC';
+          var dateStr = esc(formatDate(e.timestamp));
+          var sha = esc(e.sha.substring(0, 7));
+          var hasDevices = e.devices && Object.keys(e.devices).length > 0;
+          var durStr = e.durationMs ? formatDuration(e.durationMs) : '';
+
+          html += '<div class="run-card">';
+          html += '<div class="run-header" tabindex="0" role="button" onclick="toggleRun(this)">';
+          html += '<span class="run-status-dot ' + dotCls + '"></span>';
+          html += '<div class="run-info"><div class="run-title">' + dateStr + ', ' + timeStr + (durStr ? ' <span class="run-duration">&middot; ' + durStr + '</span>' : '') + '</div>';
+          html += '<div class="run-meta"><code>' + sha + '</code></div></div>';
+          html += '<div class="run-actions">';
+          html += '<a class="run-link" href="' + esc(e.url) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View Report</a>';
+          if (hasDevices) html += '<span class="run-chevron">&#x25B6;</span>';
+          html += '</div>';
+          html += '</div>';
+
+          if (hasDevices) {
+            html += '<div class="run-details">';
+            var devKeys = Object.keys(e.devices);
+            for (var di = 0; di < devKeys.length; di++) {
+              var dev = devKeys[di], r = e.devices[dev];
+              var devFailed = r.failed > 0;
+              var devIcon = devFailed ? '&#x2716;' : '&#x2714;';
+              var devIconColor = devFailed ? 'var(--red)' : 'var(--green)';
+              var devCounts = r.passed + ' passed';
+              if (r.failed) devCounts += ', <span class="failed-count">' + r.failed + ' failed</span>';
+              if (r.flaky) devCounts += ', <span class="flaky-count">' + r.flaky + ' flaky</span>';
+              if (r.skipped) devCounts += ', ' + r.skipped + ' skipped';
+              if (r.durationMs) devCounts += ' &middot; ' + formatDuration(r.durationMs);
+
+              html += '<div class="device-row">';
+              html += '<span class="device-status-icon" style="color:' + devIconColor + '">' + devIcon + '</span>';
+              html += '<span class="device-label">' + esc(deviceLabel(dev)) + '</span>';
+              html += '<span class="device-counts">' + devCounts + '</span>';
+              html += '</div>';
+            }
             html += '</div>';
           }
-          html += '</div></td></tr>';
+
+          html += '</div>';
         }
+        html += '</div></div>';
       }
 
-      html += '</tbody></table>';
       return html;
     }
 
@@ -1430,8 +1642,9 @@ function generateDashboardHtml(
         }
       }
 
-      var html = '<div class="failures-section">';
-      html += '<div class="section-header">Recent Failures &middot; Last 7 days</div>';
+      var html = '<div class="failures-section collapsible-section collapsed">';
+      html += '<div class="collapsible-header" onclick="toggleCollapsible(this)" tabindex="0" role="button"><div class="section-header">Recent Failures &middot; Last 7 days</div><span class="collapsible-chevron">&#x25B6;</span></div>';
+      html += '<div class="collapsible-body">';
 
       for (var d = 0; d < failDevices.length; d++) {
         var dev = failDevices[d];
@@ -1443,48 +1656,32 @@ function generateDashboardHtml(
         html += '<span class="failure-name">' + esc(deviceLabel(dev)) + '</span>';
         html += '<span class="failure-ratio">Failed in ' + fails.length + '/' + totalRuns + ' runs</span>';
         html += '</div>';
-        html += '<div class="failure-links">';
+        html += '<table class="failure-table"><tbody>';
         var showCount = Math.min(fails.length, 5);
         for (var f = 0; f < showCount; f++) {
-          if (f > 0) html += ' &middot; ';
-          html += '<a href="' + esc(fails[f].url) + '" target="_blank" rel="noopener noreferrer">' + esc(formatDate(fails[f].time)) + ' ' + esc(formatTime(fails[f].time)) + '</a>';
-          html += ' (' + fails[f].failed + ' of ' + fails[f].total + ' failed)';
+          html += '<tr>';
+          html += '<td class="failure-date"><a href="' + esc(fails[f].url) + '" target="_blank" rel="noopener noreferrer">' + esc(formatDate(fails[f].time)) + ', ' + esc(formatTime(fails[f].time)) + '</a></td>';
+          html += '<td class="failure-count"><span class="failed-count">' + fails[f].failed + '</span> / ' + fails[f].total + ' failed</td>';
+          html += '</tr>';
         }
-        if (fails.length > 5) html += ' &middot; +' + (fails.length - 5) + ' more';
-        html += '</div></div>';
+        if (fails.length > 5) {
+          html += '<tr><td colspan="2" class="failure-more">+' + (fails.length - 5) + ' more</td></tr>';
+        }
+        html += '</tbody></table>';
+        html += '</div>';
       }
 
-      html += '</div>';
+      html += '</div></div>';
       return html;
     }
 
     /* ---- CI filter ---- */
-    function filterCiTable() {
+    function filterCiBranches() {
       var query = document.getElementById('ci-filter').value.toLowerCase();
-      var rows = document.querySelectorAll('.ci-table tbody tr.ci-row');
-      for (var i = 0; i < rows.length; i++) {
-        var branch = (rows[i].getAttribute('data-branch') || '').toLowerCase();
-        var match = branch.indexOf(query) !== -1;
-        rows[i].style.display = match ? '' : 'none';
-        /* Hide detail row when parent is filtered out; don't force-show it */
-        var detailId = rows[i].getAttribute('data-detail');
-        if (detailId) {
-          var detail = document.getElementById(detailId);
-          if (detail && !match) detail.style.display = 'none';
-        }
-      }
-    }
-
-    /* ---- CI row expand ---- */
-    function toggleCiRow(rowId) {
-      var row = document.getElementById(rowId);
-      var chev = document.getElementById('chev-' + rowId);
-      if (row.style.display === 'none' || row.style.display === '') {
-        row.style.display = 'table-row';
-        if (chev) chev.classList.add('expanded');
-      } else {
-        row.style.display = 'none';
-        if (chev) chev.classList.remove('expanded');
+      var groups = document.querySelectorAll('.ci-branch-group');
+      for (var i = 0; i < groups.length; i++) {
+        var branch = (groups[i].getAttribute('data-branch') || '').toLowerCase();
+        groups[i].style.display = branch.indexOf(query) !== -1 ? '' : 'none';
       }
     }
 
@@ -1511,6 +1708,11 @@ function generateDashboardHtml(
     }
 
     /* ---- Toggle all day groups ---- */
+    /* ---- Toggle collapsible sections ---- */
+    function toggleCollapsible(header) {
+      header.parentElement.classList.toggle('collapsed');
+    }
+
     function toggleAllDays(btn) {
       var groups = document.querySelectorAll('.day-group');
       var anyCollapsed = false;
@@ -1591,9 +1793,35 @@ function generateDashboardHtml(
         } else if (el && el.classList.contains('tab')) {
           e.preventDefault();
           el.click();
+        } else if (el && el.classList.contains('collapsible-header')) {
+          e.preventDefault();
+          toggleCollapsible(el);
         }
       }
     });
+
+    /* ---- Theme toggle ---- */
+    function getSystemTheme() {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+
+    function applyTheme(theme) {
+      if (theme === 'system') {
+        document.documentElement.removeAttribute('data-theme');
+      } else {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+      var effective = theme === 'system' ? getSystemTheme() : theme;
+      document.getElementById('theme-checkbox').checked = effective === 'dark';
+    }
+
+    function toggleTheme(isDark) {
+      var next = isDark ? 'dark' : 'light';
+      localStorage.setItem('theme', next);
+      applyTheme(next);
+    }
+
+    applyTheme(localStorage.getItem('theme') || 'system');
 
     /* ---- Format generated-at timestamp ---- */
     var genAtEl = document.getElementById('generated-at');
@@ -1606,11 +1834,13 @@ function generateDashboardHtml(
     document.getElementById('schedule-count').textContent = CRON_DATA.length;
     document.getElementById('ci-count').textContent = CI_DATA.length;
 
+    var drilldown = renderRecentFailures(CRON_DATA) + renderDayGroups(CRON_DATA);
+    var divider = drilldown ? '<hr class="drilldown-divider">' : '';
     document.getElementById('panel-schedule').innerHTML =
-      renderStatusBanner(CRON_DATA) + renderDeviceGrid(CRON_DATA) + renderUptimeBars(CRON_DATA) + renderRecentFailures(CRON_DATA) + renderDayGroups(CRON_DATA);
+      renderStatusBanner(CRON_DATA) + renderDeviceGrid(CRON_DATA) + renderUptimeBars(CRON_DATA) + divider + drilldown;
 
     document.getElementById('panel-ci').innerHTML =
-      renderStatusBanner(CI_DATA) + renderCiTable(CI_DATA);
+      renderCiSummary(CI_DATA) + renderCiGroups(CI_DATA);
 
     restoreFromHash();
   </script>
