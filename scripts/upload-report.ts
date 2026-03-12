@@ -1265,17 +1265,23 @@ function generateDashboardHtml(
 
     /* ---- Device status grid ---- */
     function renderDeviceGrid(entries) {
-      /* Find the latest entry that has device data */
+      if (entries.length === 0) return '';
+
+      /* Find the latest entry that has real device data */
       var latest = null;
       for (var i = 0; i < entries.length; i++) {
         if (entries[i].devices && Object.keys(entries[i].devices).length > 0) {
           latest = entries[i]; break;
         }
       }
-      if (!latest) return '';
+      if (!latest) {
+        return '<div class="status-grid"><div class="section-header">Current Status</div>'
+          + '<div class="empty-state"><p>No device report data available yet.</p></div></div>';
+      }
+
+      var allDevices = Object.keys(latest.devices);
 
       /* Build per-device history from last 10 runs */
-      var allDevices = Object.keys(latest.devices);
       var history = {};
       for (var d = 0; d < allDevices.length; d++) history[allDevices[d]] = [];
       for (var i = 0; i < Math.min(entries.length, 10); i++) {
@@ -1296,7 +1302,7 @@ function generateDashboardHtml(
       for (var d = 0; d < allDevices.length; d++) {
         var dev = allDevices[d];
         var r = latest.devices[dev];
-        var total = r.passed + r.failed + r.flaky + r.skipped;
+        var total = r.passed + r.failed + r.flaky + (r.skipped || 0);
         var cardCls, badgeCls, badgeText;
 
         if (r.failed > 0) {
@@ -1373,7 +1379,10 @@ function generateDashboardHtml(
     function renderUptimeBars(entries) {
       var dayMap = buildDayMap(entries);
       var devices = Object.keys(dayMap);
-      if (devices.length === 0) return '';
+      if (devices.length === 0) {
+        return '<div class="uptime-section"><div class="section-header">Uptime &middot; Last ' + RETENTION_DAYS + ' days</div>'
+          + '<div class="empty-state"><p>No device report data available yet.</p></div></div>';
+      }
 
       var days = buildDaysList();
       var html = '<div class="uptime-section"><div class="section-header">Uptime &middot; Last ' + RETENTION_DAYS + ' days</div>';
@@ -1431,7 +1440,7 @@ function generateDashboardHtml(
       }
 
       var grouped = groupByDay(entries);
-      var html = '<div class="days-section collapsible-section collapsed">';
+      var html = '<div class="days-section collapsible-section collapsed" data-section="run-history">';
       html += '<div class="collapsible-header" onclick="toggleCollapsible(this)" tabindex="0" role="button"><div class="section-header">Run History</div><span class="collapsible-chevron">&#x25B6;</span></div>';
       html += '<div class="collapsible-body">';
       html += '<div style="display:flex;justify-content:flex-end;margin-bottom:0.75rem"><button class="toggle-all-btn" onclick="toggleAllDays(this)">Expand all</button></div>';
@@ -1661,7 +1670,7 @@ function generateDashboardHtml(
         }
       }
 
-      var html = '<div class="failures-section collapsible-section collapsed">';
+      var html = '<div class="failures-section collapsible-section collapsed" data-section="recent-failures">';
       html += '<div class="collapsible-header" onclick="toggleCollapsible(this)" tabindex="0" role="button"><div class="section-header">Recent Failures &middot; Last 7 days</div><span class="collapsible-chevron">&#x25B6;</span></div>';
       html += '<div class="collapsible-body">';
 
@@ -1712,13 +1721,98 @@ function generateDashboardHtml(
         tab.classList.add('active');
         document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
         updateHash();
+        saveUiState();
       });
     });
 
     /* ---- Toggle day group ---- */
+    /* ---- localStorage UI state persistence ---- */
+    var UI_STATE_KEY = 'dashboard-ui:' + location.pathname;
+
+    function loadUiState() {
+      try { return JSON.parse(localStorage.getItem(UI_STATE_KEY)) || {}; } catch(e) { return {}; }
+    }
+
+    function saveUiState() {
+      var state = {};
+      /* Active tab */
+      var activeTab = document.querySelector('.tab.active');
+      if (activeTab) state.tab = activeTab.dataset.tab;
+
+      /* Collapsible sections (Run History, Recent Failures) */
+      var sections = document.querySelectorAll('.collapsible-section');
+      state.sections = {};
+      for (var i = 0; i < sections.length; i++) {
+        var key = sections[i].dataset.section;
+        if (key) {
+          state.sections[key] = !sections[i].classList.contains('collapsed');
+        }
+      }
+
+      /* Expanded day groups */
+      state.expandedDays = [];
+      var groups = document.querySelectorAll('.day-group.expanded');
+      for (var i = 0; i < groups.length; i++) {
+        if (groups[i].id) state.expandedDays.push(groups[i].id);
+      }
+
+      try { localStorage.setItem(UI_STATE_KEY, JSON.stringify(state)); } catch(e) {}
+    }
+
+    function restoreUiState() {
+      var state = loadUiState();
+      if (!state.sections && !state.expandedDays && !state.tab) return false;
+
+      /* Restore active tab */
+      if (state.tab) {
+        var tabEl = document.querySelector('.tab[data-tab="' + state.tab + '"]');
+        var panelEl = document.getElementById('panel-' + state.tab);
+        if (tabEl && panelEl) {
+          document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+          document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+          tabEl.classList.add('active');
+          panelEl.classList.add('active');
+        }
+      }
+
+      /* Restore collapsible sections */
+      if (state.sections) {
+        var sections = document.querySelectorAll('.collapsible-section');
+        for (var i = 0; i < sections.length; i++) {
+          var key = sections[i].dataset.section;
+          if (key && state.sections[key] !== undefined) {
+            if (state.sections[key]) sections[i].classList.remove('collapsed');
+            else sections[i].classList.add('collapsed');
+          }
+        }
+      }
+
+      /* Restore expanded day groups */
+      if (state.expandedDays) {
+        for (var i = 0; i < state.expandedDays.length; i++) {
+          var el = document.getElementById(state.expandedDays[i]);
+          if (el) el.classList.add('expanded');
+        }
+      }
+
+      /* Update toggle-all button text */
+      var groups = document.querySelectorAll('.day-group');
+      var anyCollapsed = false;
+      for (var i = 0; i < groups.length; i++) {
+        if (!groups[i].classList.contains('expanded')) { anyCollapsed = true; break; }
+      }
+      var btns = document.querySelectorAll('.toggle-all-btn');
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].textContent = anyCollapsed ? 'Expand all' : 'Collapse all';
+      }
+
+      return true;
+    }
+
     function toggleDay(header) {
       header.parentElement.classList.toggle('expanded');
       updateHash();
+      saveUiState();
     }
 
     /* ---- Toggle run details ---- */
@@ -1726,10 +1820,10 @@ function generateDashboardHtml(
       header.parentElement.classList.toggle('expanded');
     }
 
-    /* ---- Toggle all day groups ---- */
     /* ---- Toggle collapsible sections ---- */
     function toggleCollapsible(header) {
       header.parentElement.classList.toggle('collapsed');
+      saveUiState();
     }
 
     function toggleAllDays(btn) {
@@ -1744,6 +1838,7 @@ function generateDashboardHtml(
       }
       btn.textContent = anyCollapsed ? 'Collapse all' : 'Expand all';
       updateHash();
+      saveUiState();
     }
 
     /* ---- Scroll to day from uptime bar click ---- */
@@ -1759,6 +1854,7 @@ function generateDashboardHtml(
       el.classList.add('highlight');
       setTimeout(function() { el.classList.remove('highlight'); }, 2000);
       updateHash();
+      saveUiState();
     }
 
     /* ---- URL hash routing ---- */
@@ -1776,31 +1872,35 @@ function generateDashboardHtml(
 
     function restoreFromHash() {
       var hash = window.location.hash.substring(1);
-      if (!hash) {
-        var todayEl = document.getElementById('day-' + new Date().toISOString().substring(0, 10));
-        if (todayEl) todayEl.classList.add('expanded');
-        return;
-      }
-      var parts = hash.split('/');
-      var tab = parts[0];
-      if (tab === 'ci' || tab === 'schedule') {
-        document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
-        document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
-        var tabEl = document.querySelector('.tab[data-tab="' + tab + '"]');
-        if (tabEl) tabEl.classList.add('active');
-        var panelEl = document.getElementById('panel-' + tab);
-        if (panelEl) panelEl.classList.add('active');
-      }
-      if (parts[1]) {
-        var dayEl = document.getElementById(parts[1]);
-        if (dayEl) {
-          dayEl.classList.add('expanded');
-          setTimeout(function() { dayEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+
+      /* If hash has explicit navigation, use it (direct link) */
+      if (hash) {
+        var parts = hash.split('/');
+        var tab = parts[0];
+        if (tab === 'ci' || tab === 'schedule') {
+          document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+          document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+          var tabEl = document.querySelector('.tab[data-tab="' + tab + '"]');
+          if (tabEl) tabEl.classList.add('active');
+          var panelEl = document.getElementById('panel-' + tab);
+          if (panelEl) panelEl.classList.add('active');
         }
-      } else if (!hash || tab === 'schedule') {
-        var todayEl = document.getElementById('day-' + new Date().toISOString().substring(0, 10));
-        if (todayEl) todayEl.classList.add('expanded');
+        if (parts[1]) {
+          var dayEl = document.getElementById(parts[1]);
+          if (dayEl) {
+            dayEl.classList.add('expanded');
+            setTimeout(function() { dayEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+          }
+          return;
+        }
       }
+
+      /* Try restoring from localStorage (auto-refresh persistence) */
+      if (restoreUiState()) return;
+
+      /* Default: expand today */
+      var todayEl = document.getElementById('day-' + new Date().toISOString().substring(0, 10));
+      if (todayEl) todayEl.classList.add('expanded');
     }
 
     /* ---- Keyboard navigation ---- */
