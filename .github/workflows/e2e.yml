@@ -5,8 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  schedule:
-    - cron: '*/10 * * * *'
+  # schedule:
+  #   - cron: '*/10 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -110,6 +110,13 @@ jobs:
               issue_number: context.issue.number,
               body,
             });
+
+      - name: Notify Slack
+        if: ${{ !cancelled() }}
+        run: npx tsx scripts/notify-slack.ts --report-url=${{ steps.upload.outputs.report-url }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CLOUDFRONT_DOMAIN: ${{ secrets.CLOUDFRONT_DOMAIN }}
 
       - name: Fail if tests failed
         if: ${{ steps.tests.outcome == 'failure' }}

@@ -18,6 +18,7 @@ tests/
   <feature>/    - One folder per feature domain
 scripts/
   upload-report.ts  - Upload Playwright report to S3, update manifest and index page
+  notify-slack.ts   - Send Slack notification on cron test failure
 docs/               - Architecture, conventions, writing-tests, report storage
 ```
 
@@ -85,6 +86,13 @@ To enable a project, uncomment it in `playwright.config.ts` and update `.github/
 - **Access:** S3 bucket is private. CloudFront with OAC provides public read access.
 - **Config:** `S3_BUCKET_NAME`, `AWS_REGION`, `CLOUDFRONT_DOMAIN` from environment. Never hardcode credentials.
 
+### Slack Notifications
+- After every run (cron and CI), a Slack message is sent via Incoming Webhook.
+- Script: `scripts/notify-slack.ts` — parses `test-results.json` (Playwright JSON reporter) for per-device breakdown.
+- Shows each device/project with pass/fail status, test counts, branch, commit, and links.
+- **Config:** `SLACK_WEBHOOK_URL` from environment (GitHub secret). Never hardcode.
+- **Note:** CI notifications are temporary for testing — will be removed later, keeping only cron.
+
 ## Commands
 
 ### E2E Tests
@@ -97,6 +105,9 @@ To enable a project, uncomment it in `playwright.config.ts` and update `.github/
 
 ### Report Upload
 - `npm run report:upload -- --status=passed` - Upload Playwright report to S3
+
+### Slack Notifications
+- `npm run notify:slack -- --report-url=<url>` - Send failure notification to Slack
 
 ## Rules
 - NEVER allow GA4 or tracking requests to reach external services during tests. All analytics must be blocked via `blocked-routes.config.ts`.
