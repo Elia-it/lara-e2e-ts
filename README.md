@@ -46,6 +46,21 @@ npm run report:upload -- --status=passed
 | `npm run report` | Open last HTML report |
 | `npm run codegen` | Launch Playwright codegen tool |
 | `npm run report:upload` | Upload Playwright report to S3 |
+| `npm run dashboard:preview` | Preview the status dashboard locally with mock data |
+
+### Preview Dashboard
+
+The status dashboard can be previewed locally during development with realistic mock data (120 scheduled runs, 25 CI runs across 4 devices, with random failures and flaky tests):
+
+```bash
+npm run dashboard:preview
+```
+
+This generates `.preview-dashboard.html` in the project root and opens it in your default browser. The file is git-ignored. Run it again any time to regenerate with fresh random data.
+
+The dashboard has two tabs:
+- **Schedule** (default) — Status banner, per-device 31-day uptime bars (clickable), and runs grouped by day. Click a day in the uptime bar to jump to that day's detail. Each day expands to show individual runs with per-device pass/fail breakdown and links to the full Playwright report.
+- **CI** — CI runs grouped by branch in expandable cards, with a filter input to search by branch name. Each card shows individual runs with commit, status, per-device breakdown, and report links.
 
 ## Project Structure
 
