@@ -20,6 +20,7 @@ interface DeviceResult {
   failed: number;
   flaky: number;
   skipped: number;
+  durationMs?: number;
 }
 
 interface ManifestEntry {
@@ -30,6 +31,7 @@ interface ManifestEntry {
   status: string;
   url: string;
   devices?: Record<string, DeviceResult>;
+  durationMs?: number;
 }
 
 const DEVICE_LABELS: Record<string, string> = {
@@ -72,6 +74,7 @@ function mockDevices(failRate: number): Record<string, DeviceResult> {
       failed: failCount,
       flaky: flakyCount,
       skipped: 0,
+      durationMs: Math.floor(Math.random() * 60000) + 30000,
     };
   }
 
@@ -107,6 +110,7 @@ function generateEntries(
       status: hasFailed ? 'failed' : 'passed',
       url: '#',
       devices,
+      durationMs: Math.max(...Object.values(devices).map((d) => d.durationMs || 0)),
     });
   }
 
@@ -137,11 +141,16 @@ if (tmplStart === -1 || tmplEnd === -1) {
 // Strip surrounding backticks and interpolate mock data
 const rawTemplate = uploadSrc.substring(tmplStart + 1, tmplEnd - 1);
 
+function safeJsonForHtml(json: string): string {
+  return json.replace(/<\//g, '<\\/');
+}
+
 const html = rawTemplate
-  .replace('${cronJson}', JSON.stringify(cronEntries))
-  .replace('${ciJson}', JSON.stringify(ciEntries))
-  .replace('${deviceLabelsJson}', JSON.stringify(DEVICE_LABELS))
-  .replace('${RETENTION_DAYS}', String(RETENTION_DAYS));
+  .replace('${cronJson}', safeJsonForHtml(JSON.stringify(cronEntries)))
+  .replace('${ciJson}', safeJsonForHtml(JSON.stringify(ciEntries)))
+  .replace('${deviceLabelsJson}', safeJsonForHtml(JSON.stringify(DEVICE_LABELS)))
+  .replace('${RETENTION_DAYS}', String(RETENTION_DAYS))
+  .replace('${generatedAt}', new Date().toISOString());
 
 /* ------------------------------------------------------------------ */
 /*  Write and open                                                     */
@@ -151,11 +160,13 @@ const outPath = join(process.cwd(), '.preview-dashboard.html');
 writeFileSync(outPath, html);
 console.log(`Preview written to ${outPath}`);
 
-const openCmd =
-  process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-
 try {
-  execSync(`${openCmd} "${outPath}"`);
+  if (process.platform === 'win32') {
+    execSync(`cmd /c start "" "${outPath}"`);
+  } else {
+    const openCmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
+    execSync(`${openCmd} "${outPath}"`);
+  }
   console.log('Opened in browser.');
 } catch {
   console.log(`Open manually: file://${outPath}`);

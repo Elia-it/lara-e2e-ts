@@ -120,9 +120,14 @@ interface PlaywrightSpec {
   tests: PlaywrightTest[];
 }
 
+interface PlaywrightTestResult {
+  duration: number;
+}
+
 interface PlaywrightTest {
   projectName: string;
   status: string; // 'expected' | 'unexpected' | 'flaky' | 'skipped'
+  results: PlaywrightTestResult[];
 }
 
 interface DeviceResult {
@@ -130,6 +135,7 @@ interface DeviceResult {
   failed: number;
   flaky: number;
   skipped: number;
+  durationMs?: number;
 }
 
 function collectTests(suite: PlaywrightSuite): PlaywrightTest[] {
@@ -155,7 +161,7 @@ function parseTestResults(): Record<string, DeviceResult> | undefined {
       for (const test of collectTests(suite)) {
         const name = test.projectName || 'unknown';
         if (!devices[name]) {
-          devices[name] = { passed: 0, failed: 0, flaky: 0, skipped: 0 };
+          devices[name] = { passed: 0, failed: 0, flaky: 0, skipped: 0, durationMs: 0 };
         }
         switch (test.status) {
           case 'expected':
@@ -170,6 +176,10 @@ function parseTestResults(): Record<string, DeviceResult> | undefined {
           case 'skipped':
             devices[name].skipped++;
             break;
+        }
+        // Sum duration from the last result (final retry attempt)
+        if (test.results && test.results.length > 0) {
+          devices[name].durationMs! += test.results[test.results.length - 1].duration;
         }
       }
     }
@@ -204,6 +214,7 @@ interface ManifestEntry {
   status: string;
   url: string;
   devices?: Record<string, DeviceResult>;
+  durationMs?: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -273,13 +284,18 @@ async function uploadReportFiles(s3: S3Client, prefix: string): Promise<number> 
 /*  Dashboard HTML generation                                          */
 /* ------------------------------------------------------------------ */
 
+function safeJsonForHtml(json: string): string {
+  return json.replace(/<\//g, '<\\/');
+}
+
 function generateDashboardHtml(
   cronEntries: ManifestEntry[],
   ciEntries: ManifestEntry[],
 ): string {
-  const cronJson = JSON.stringify(cronEntries);
-  const ciJson = JSON.stringify(ciEntries);
-  const deviceLabelsJson = JSON.stringify(DEVICE_LABELS);
+  const cronJson = safeJsonForHtml(JSON.stringify(cronEntries));
+  const ciJson = safeJsonForHtml(JSON.stringify(ciEntries));
+  const deviceLabelsJson = safeJsonForHtml(JSON.stringify(DEVICE_LABELS));
+  const generatedAt = new Date().toISOString();
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -816,6 +832,118 @@ function generateDashboardHtml(
       gap: 0.375rem;
     }
 
+    /* Legend */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+      margin-bottom: 0.25rem;
+      font-size: 0.6875rem;
+      color: var(--fg-muted);
+    }
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    .legend-dot.green { background: var(--green-bar); }
+    .legend-dot.red { background: var(--red-bar); }
+    .legend-dot.yellow { background: var(--yellow-bar); }
+    .legend-dot.gray { background: var(--gray-bar); opacity: 0.4; }
+
+    /* Focus-visible for keyboard navigation */
+    .day-group-header:focus-visible,
+    .run-header:focus-visible,
+    .tab:focus-visible {
+      outline: 2px solid var(--link);
+      outline-offset: -2px;
+    }
+
+    /* Toggle all button */
+    .toggle-all-btn {
+      font-size: 0.6875rem;
+      color: var(--link);
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.25rem 0.625rem;
+      cursor: pointer;
+      font-weight: 500;
+      font-family: inherit;
+    }
+    .toggle-all-btn:hover { background: var(--hover); }
+
+    /* CI filter input */
+    #ci-filter {
+      width: 100%;
+      max-width: 300px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.8125rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--fg);
+      outline: none;
+      font-family: inherit;
+    }
+    #ci-filter:focus { border-color: var(--link); box-shadow: 0 0 0 2px color-mix(in srgb, var(--link) 20%, transparent); }
+    #ci-filter::placeholder { color: var(--fg-muted); }
+
+    /* CI expandable rows */
+    .ci-chevron {
+      font-size: 0.6875rem;
+      color: var(--fg-muted);
+      transition: transform 0.2s;
+      display: inline-block;
+    }
+    .ci-chevron.expanded { transform: rotate(90deg); }
+    .ci-row.expandable { cursor: pointer; }
+    .ci-detail-row td { padding: 0; }
+    .ci-detail-content {
+      padding: 0.5rem 1rem 0.75rem 2rem;
+    }
+
+    /* Failures section */
+    .failures-section { margin-bottom: 2.5rem; }
+    .failure-device {
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .failure-device:last-child { border-bottom: none; }
+    .failure-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .failure-name { font-size: 0.875rem; font-weight: 500; }
+    .failure-ratio { font-size: 0.75rem; color: var(--red); font-weight: 600; }
+    .failure-links {
+      margin-top: 0.375rem;
+      font-size: 0.6875rem;
+      color: var(--fg-muted);
+    }
+    .failure-links a { color: var(--link); text-decoration: none; }
+    .failure-links a:hover { text-decoration: underline; }
+
+    /* Duration */
+    .run-duration {
+      font-size: 0.6875rem;
+      color: var(--fg-muted);
+      white-space: nowrap;
+    }
+    .duration-trend {
+      font-size: 0.625rem;
+      font-weight: 600;
+      margin-left: 0.25rem;
+    }
+
     /* Responsive */
     @media (max-width: 640px) {
       .container { padding: 1.5rem 1rem; }
@@ -832,23 +960,26 @@ function generateDashboardHtml(
   <div class="container">
     <div class="header">
       <h1>Lara E2E Status</h1>
-      <span class="header-meta">Auto-refreshes every 5 min</span>
+      <span class="header-meta">Updated <time id="generated-at">${generatedAt}</time> &middot; Auto-refreshes every 5 min</span>
     </div>
 
     <div class="tabs">
-      <div class="tab active" data-tab="schedule">Schedule<span class="tab-count" id="schedule-count">0</span></div>
-      <div class="tab" data-tab="ci">CI<span class="tab-count" id="ci-count">0</span></div>
+      <div class="tab active" data-tab="schedule" tabindex="0" role="button">Schedule<span class="tab-count" id="schedule-count">0</span></div>
+      <div class="tab" data-tab="ci" tabindex="0" role="button">CI<span class="tab-count" id="ci-count">0</span></div>
     </div>
 
     <div class="tab-panel active" id="panel-schedule"></div>
     <div class="tab-panel" id="panel-ci"></div>
   </div>
 
+  <script type="application/json" id="data-cron">${cronJson}</script>
+  <script type="application/json" id="data-ci">${ciJson}</script>
+  <script type="application/json" id="data-devices">${deviceLabelsJson}</script>
   <script>
-    const CRON_DATA = ${cronJson};
-    const CI_DATA = ${ciJson};
-    const DEVICE_LABELS = ${deviceLabelsJson};
-    const RETENTION_DAYS = ${RETENTION_DAYS};
+    var CRON_DATA = JSON.parse(document.getElementById('data-cron').textContent);
+    var CI_DATA = JSON.parse(document.getElementById('data-ci').textContent);
+    var DEVICE_LABELS = JSON.parse(document.getElementById('data-devices').textContent);
+    var RETENTION_DAYS = ${RETENTION_DAYS};
 
     function esc(s) {
       const d = document.createElement('div');
@@ -884,6 +1015,32 @@ function generateDashboardHtml(
 
     function isToday(dateStr) {
       return dateStr === new Date().toISOString().substring(0, 10);
+    }
+
+    function formatDuration(ms) {
+      if (!ms) return '';
+      var secs = Math.floor(ms / 1000);
+      if (secs < 60) return secs + 's';
+      var mins = Math.floor(secs / 60);
+      secs = secs % 60;
+      return mins + 'm ' + (secs > 0 ? secs + 's' : '');
+    }
+
+    function durationTrend(currentMs, entries, entryIndex) {
+      if (!currentMs) return '';
+      var durations = [];
+      for (var i = entryIndex + 1; i < entries.length && durations.length < 5; i++) {
+        if (entries[i].durationMs) durations.push(entries[i].durationMs);
+      }
+      if (durations.length === 0) return '';
+      var avg = 0;
+      for (var i = 0; i < durations.length; i++) avg += durations[i];
+      avg /= durations.length;
+      var diff = ((currentMs - avg) / avg) * 100;
+      if (Math.abs(diff) < 10) return '';
+      var arrow = diff > 0 ? '&#x25B2;' : '&#x25BC;';
+      var color = diff > 0 ? 'var(--red)' : 'var(--green)';
+      return ' <span class="duration-trend" style="color:' + color + '">' + arrow + ' ' + Math.abs(Math.round(diff)) + '%</span>';
     }
 
     /* ---- Group entries by YYYY-MM-DD ---- */
@@ -997,7 +1154,13 @@ function generateDashboardHtml(
         html += '</div>';
       }
 
-      html += '</div></div>';
+      html += '</div>';
+      html += '<div class="legend">';
+      html += '<span class="legend-item"><span class="legend-dot green"></span>Operational &mdash; all tests passed</span>';
+      html += '<span class="legend-item"><span class="legend-dot yellow"></span>Flaky &mdash; tests passed on retry</span>';
+      html += '<span class="legend-item"><span class="legend-dot red"></span>Down &mdash; one or more tests failed</span>';
+      html += '</div>';
+      html += '</div>';
       return html;
     }
 
@@ -1039,6 +1202,12 @@ function generateDashboardHtml(
 
       var days = buildDaysList();
       var html = '<div class="uptime-section"><div class="section-header">Uptime &middot; Last ' + RETENTION_DAYS + ' days</div>';
+      html += '<div class="legend">';
+      html += '<span class="legend-item"><span class="legend-dot green"></span>All passed</span>';
+      html += '<span class="legend-item"><span class="legend-dot yellow"></span>Flaky</span>';
+      html += '<span class="legend-item"><span class="legend-dot red"></span>Failed</span>';
+      html += '<span class="legend-item"><span class="legend-dot gray"></span>No runs</span>';
+      html += '</div>';
 
       for (var di = 0; di < devices.length; di++) {
         var dev = devices[di];
@@ -1065,10 +1234,11 @@ function generateDashboardHtml(
         }
 
         var pct = totalRuns > 0 ? ((passedRuns / totalRuns) * 100).toFixed(1) : '---';
+        var pctDisplay = pct === '---' ? 'N/A' : pct + '%';
         var pctColor = pct === '100.0' ? 'var(--green)' : pct === '---' ? 'var(--fg-muted)' : 'var(--red)';
 
         html += '<div class="device-uptime">';
-        html += '<div class="device-uptime-header"><span class="device-name">' + esc(deviceLabel(dev)) + '</span><span class="device-uptime-pct" style="color:' + pctColor + '">' + pct + '%</span></div>';
+        html += '<div class="device-uptime-header"><span class="device-name">' + esc(deviceLabel(dev)) + '</span><span class="device-uptime-pct" style="color:' + pctColor + '">' + pctDisplay + '</span></div>';
         html += '<div class="uptime-bar">' + bars + '</div>';
         html += '<div class="uptime-legend"><span>' + esc(formatDate(days[0] + 'T00:00:00Z')) + '</span><span>Today</span></div>';
         html += '</div>';
@@ -1085,7 +1255,7 @@ function generateDashboardHtml(
       }
 
       var grouped = groupByDay(entries);
-      var html = '<div class="days-section"><div class="section-header">Run History</div>';
+      var html = '<div class="days-section"><div class="section-header" style="display:flex;align-items:center;justify-content:space-between">Run History<button class="toggle-all-btn" onclick="toggleAllDays(this)">Expand all</button></div>';
 
       for (var gi = 0; gi < grouped.order.length; gi++) {
         var day = grouped.order[gi];
@@ -1102,7 +1272,7 @@ function generateDashboardHtml(
         badges += '<span style="color:var(--fg-muted)">&middot; ' + runs.length + ' run' + (runs.length > 1 ? 's' : '') + '</span>';
 
         html += '<div class="day-group" id="day-' + day + '">';
-        html += '<div class="day-group-header" onclick="toggleDay(this)">';
+        html += '<div class="day-group-header" tabindex="0" role="button" onclick="toggleDay(this)">';
         html += '<div class="day-status-bar ' + barCls + '"></div>';
         html += '<div class="day-info"><div class="day-title">' + dateLabel + '</div>';
         html += '<div class="day-summary">' + badges + '</div></div>';
@@ -1117,13 +1287,18 @@ function generateDashboardHtml(
           var sha = esc(e.sha.substring(0, 7));
           var hasDevices = e.devices && Object.keys(e.devices).length > 0;
 
+          /* Find global index for duration trend */
+          var globalIdx = 0;
+          for (var gii = 0; gii < entries.length; gii++) { if (entries[gii] === e) { globalIdx = gii; break; } }
+          var durStr = e.durationMs ? formatDuration(e.durationMs) + durationTrend(e.durationMs, entries, globalIdx) : '';
+
           html += '<div class="run-card">';
-          html += '<div class="run-header" onclick="toggleRun(this)">';
+          html += '<div class="run-header" tabindex="0" role="button" onclick="toggleRun(this)">';
           html += '<span class="run-status-dot ' + dotCls + '"></span>';
-          html += '<div class="run-info"><div class="run-title">' + timeStr + '</div>';
+          html += '<div class="run-info"><div class="run-title">' + timeStr + (durStr ? ' <span class="run-duration">&middot; ' + durStr + '</span>' : '') + '</div>';
           html += '<div class="run-meta"><code>' + esc(e.branch) + '</code> &middot; <code>' + sha + '</code></div></div>';
           html += '<div class="run-actions">';
-          html += '<a class="run-link" href="' + esc(e.url) + '" target="_blank" onclick="event.stopPropagation()">View Report</a>';
+          html += '<a class="run-link" href="' + esc(e.url) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View Report</a>';
           if (hasDevices) html += '<span class="run-chevron">&#x25B6;</span>';
           html += '</div>';
           html += '</div>';
@@ -1140,6 +1315,7 @@ function generateDashboardHtml(
               if (r.failed) counts += ', <span class="failed-count">' + r.failed + ' failed</span>';
               if (r.flaky) counts += ', <span class="flaky-count">' + r.flaky + ' flaky</span>';
               if (r.skipped) counts += ', ' + r.skipped + ' skipped';
+              if (r.durationMs) counts += ' &middot; ' + formatDuration(r.durationMs);
 
               html += '<div class="device-row">';
               html += '<span class="device-status-icon" style="color:' + iconColor + '">' + icon + '</span>';
@@ -1165,25 +1341,151 @@ function generateDashboardHtml(
         return '<div class="empty-state"><p>No CI reports yet.</p></div>';
       }
 
-      var html = '<table class="ci-table"><thead><tr><th>Date (UTC)</th><th>Branch</th><th>Commit</th><th>Status</th><th>Report</th></tr></thead><tbody>';
+      var html = '<div style="margin-bottom:0.75rem"><input type="text" id="ci-filter" placeholder="Filter by branch..." oninput="filterCiTable()" /></div>';
+      html += '<table class="ci-table"><thead><tr><th style="width:1.5rem"></th><th>Date (UTC)</th><th>Branch</th><th>Commit</th><th>Status</th><th>Report</th></tr></thead><tbody>';
 
       for (var i = 0; i < entries.length; i++) {
         var e = entries[i];
         var dateStr = esc(formatDate(e.timestamp)) + ', ' + esc(formatTime(e.timestamp));
         var sha = esc(e.sha.substring(0, 7));
         var dot = e.status === 'passed' ? '<span style="color:var(--green)">&#x2714;</span>' : '<span style="color:var(--red)">&#x2716;</span>';
+        var hasDevices = e.devices && Object.keys(e.devices).length > 0;
+        var rowId = 'ci-row-' + i;
+        var durStr = e.durationMs ? ' &middot; ' + formatDuration(e.durationMs) : '';
 
-        html += '<tr>';
-        html += '<td>' + dateStr + '</td>';
+        html += '<tr class="ci-row' + (hasDevices ? ' expandable' : '') + '" data-branch="' + esc(e.branch) + '" data-detail="' + rowId + '"' + (hasDevices ? ' onclick="toggleCiRow(\'' + rowId + '\')"' : '') + '>';
+        html += '<td>' + (hasDevices ? '<span class="ci-chevron" id="chev-' + rowId + '">&#x25B6;</span>' : '') + '</td>';
+        html += '<td>' + dateStr + durStr + '</td>';
         html += '<td><code>' + esc(e.branch) + '</code></td>';
         html += '<td><code>' + sha + '</code></td>';
         html += '<td><span class="ci-status">' + dot + ' ' + esc(e.status) + '</span></td>';
-        html += '<td><a href="' + esc(e.url) + '" target="_blank">View</a></td>';
+        html += '<td><a href="' + esc(e.url) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">View</a></td>';
         html += '</tr>';
+
+        if (hasDevices) {
+          html += '<tr class="ci-detail-row" id="' + rowId + '" style="display:none" data-parent="' + rowId + '">';
+          html += '<td colspan="6"><div class="ci-detail-content">';
+          var devKeys = Object.keys(e.devices);
+          for (var di = 0; di < devKeys.length; di++) {
+            var dev = devKeys[di], r = e.devices[dev];
+            var devFailed = r.failed > 0;
+            var devIcon = devFailed ? '&#x2716;' : '&#x2714;';
+            var devIconColor = devFailed ? 'var(--red)' : 'var(--green)';
+            var devCounts = r.passed + ' passed';
+            if (r.failed) devCounts += ', <span class="failed-count">' + r.failed + ' failed</span>';
+            if (r.flaky) devCounts += ', <span class="flaky-count">' + r.flaky + ' flaky</span>';
+            if (r.skipped) devCounts += ', ' + r.skipped + ' skipped';
+            if (r.durationMs) devCounts += ' &middot; ' + formatDuration(r.durationMs);
+
+            html += '<div class="device-row">';
+            html += '<span class="device-status-icon" style="color:' + devIconColor + '">' + devIcon + '</span>';
+            html += '<span class="device-label">' + esc(deviceLabel(dev)) + '</span>';
+            html += '<span class="device-counts">' + devCounts + '</span>';
+            html += '</div>';
+          }
+          html += '</div></td></tr>';
+        }
       }
 
       html += '</tbody></table>';
       return html;
+    }
+
+    /* ---- Recent Failures ---- */
+    function renderRecentFailures(entries) {
+      var cutoff = new Date();
+      cutoff.setUTCDate(cutoff.getUTCDate() - 7);
+      var deviceFailures = {};
+
+      for (var i = 0; i < entries.length; i++) {
+        var e = entries[i];
+        if (new Date(e.timestamp) < cutoff) continue;
+        if (!e.devices) continue;
+        var devKeys = Object.keys(e.devices);
+        for (var j = 0; j < devKeys.length; j++) {
+          var dev = devKeys[j], r = e.devices[dev];
+          if (r.failed > 0) {
+            if (!deviceFailures[dev]) deviceFailures[dev] = [];
+            deviceFailures[dev].push({
+              failed: r.failed,
+              total: r.passed + r.failed + r.flaky + r.skipped,
+              url: e.url,
+              time: e.timestamp
+            });
+          }
+        }
+      }
+
+      var failDevices = Object.keys(deviceFailures);
+      if (failDevices.length === 0) return '';
+
+      /* Count total runs per device in the window */
+      var totalRunsPerDevice = {};
+      for (var i = 0; i < entries.length; i++) {
+        if (new Date(entries[i].timestamp) < cutoff) continue;
+        if (!entries[i].devices) continue;
+        var dk = Object.keys(entries[i].devices);
+        for (var j = 0; j < dk.length; j++) {
+          totalRunsPerDevice[dk[j]] = (totalRunsPerDevice[dk[j]] || 0) + 1;
+        }
+      }
+
+      var html = '<div class="failures-section">';
+      html += '<div class="section-header">Recent Failures &middot; Last 7 days</div>';
+
+      for (var d = 0; d < failDevices.length; d++) {
+        var dev = failDevices[d];
+        var fails = deviceFailures[dev];
+        var totalRuns = totalRunsPerDevice[dev] || fails.length;
+
+        html += '<div class="failure-device">';
+        html += '<div class="failure-header">';
+        html += '<span class="failure-name">' + esc(deviceLabel(dev)) + '</span>';
+        html += '<span class="failure-ratio">Failed in ' + fails.length + '/' + totalRuns + ' runs</span>';
+        html += '</div>';
+        html += '<div class="failure-links">';
+        var showCount = Math.min(fails.length, 5);
+        for (var f = 0; f < showCount; f++) {
+          if (f > 0) html += ' &middot; ';
+          html += '<a href="' + esc(fails[f].url) + '" target="_blank" rel="noopener noreferrer">' + esc(formatDate(fails[f].time)) + ' ' + esc(formatTime(fails[f].time)) + '</a>';
+          html += ' (' + fails[f].failed + ' of ' + fails[f].total + ' failed)';
+        }
+        if (fails.length > 5) html += ' &middot; +' + (fails.length - 5) + ' more';
+        html += '</div></div>';
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    /* ---- CI filter ---- */
+    function filterCiTable() {
+      var query = document.getElementById('ci-filter').value.toLowerCase();
+      var rows = document.querySelectorAll('.ci-table tbody tr.ci-row');
+      for (var i = 0; i < rows.length; i++) {
+        var branch = (rows[i].getAttribute('data-branch') || '').toLowerCase();
+        var match = branch.indexOf(query) !== -1;
+        rows[i].style.display = match ? '' : 'none';
+        /* Hide detail row when parent is filtered out; don't force-show it */
+        var detailId = rows[i].getAttribute('data-detail');
+        if (detailId) {
+          var detail = document.getElementById(detailId);
+          if (detail && !match) detail.style.display = 'none';
+        }
+      }
+    }
+
+    /* ---- CI row expand ---- */
+    function toggleCiRow(rowId) {
+      var row = document.getElementById(rowId);
+      var chev = document.getElementById('chev-' + rowId);
+      if (row.style.display === 'none' || row.style.display === '') {
+        row.style.display = 'table-row';
+        if (chev) chev.classList.add('expanded');
+      } else {
+        row.style.display = 'none';
+        if (chev) chev.classList.remove('expanded');
+      }
     }
 
     /* ---- Tab switching ---- */
@@ -1193,12 +1495,14 @@ function generateDashboardHtml(
         document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
         tab.classList.add('active');
         document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+        updateHash();
       });
     });
 
     /* ---- Toggle day group ---- */
     function toggleDay(header) {
       header.parentElement.classList.toggle('expanded');
+      updateHash();
     }
 
     /* ---- Toggle run details ---- */
@@ -1206,17 +1510,96 @@ function generateDashboardHtml(
       header.parentElement.classList.toggle('expanded');
     }
 
+    /* ---- Toggle all day groups ---- */
+    function toggleAllDays(btn) {
+      var groups = document.querySelectorAll('.day-group');
+      var anyCollapsed = false;
+      for (var i = 0; i < groups.length; i++) {
+        if (!groups[i].classList.contains('expanded')) { anyCollapsed = true; break; }
+      }
+      for (var i = 0; i < groups.length; i++) {
+        if (anyCollapsed) groups[i].classList.add('expanded');
+        else groups[i].classList.remove('expanded');
+      }
+      btn.textContent = anyCollapsed ? 'Collapse all' : 'Expand all';
+      updateHash();
+    }
+
     /* ---- Scroll to day from uptime bar click ---- */
     function scrollToDay(day) {
       var el = document.getElementById('day-' + day);
       if (!el) return;
-      /* Expand the day group */
       if (!el.classList.contains('expanded')) el.classList.add('expanded');
-      /* Scroll into view */
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      /* Brief highlight */
       el.classList.add('highlight');
       setTimeout(function() { el.classList.remove('highlight'); }, 2000);
+      updateHash();
+    }
+
+    /* ---- URL hash routing ---- */
+    function updateHash() {
+      var activeTab = document.querySelector('.tab.active');
+      if (!activeTab) return;
+      var tab = activeTab.dataset.tab;
+      var hash = '#' + tab;
+      if (tab === 'schedule') {
+        var expanded = document.querySelector('#panel-schedule .day-group.expanded');
+        if (expanded) hash += '/' + expanded.id;
+      }
+      history.replaceState(null, '', hash);
+    }
+
+    function restoreFromHash() {
+      var hash = window.location.hash.substring(1);
+      if (!hash) {
+        var todayEl = document.getElementById('day-' + new Date().toISOString().substring(0, 10));
+        if (todayEl) todayEl.classList.add('expanded');
+        return;
+      }
+      var parts = hash.split('/');
+      var tab = parts[0];
+      if (tab === 'ci' || tab === 'schedule') {
+        document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+        document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+        var tabEl = document.querySelector('.tab[data-tab="' + tab + '"]');
+        if (tabEl) tabEl.classList.add('active');
+        var panelEl = document.getElementById('panel-' + tab);
+        if (panelEl) panelEl.classList.add('active');
+      }
+      if (parts[1]) {
+        var dayEl = document.getElementById(parts[1]);
+        if (dayEl) {
+          dayEl.classList.add('expanded');
+          setTimeout(function() { dayEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+        }
+      } else if (!hash || tab === 'schedule') {
+        var todayEl = document.getElementById('day-' + new Date().toISOString().substring(0, 10));
+        if (todayEl) todayEl.classList.add('expanded');
+      }
+    }
+
+    /* ---- Keyboard navigation ---- */
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        var el = document.activeElement;
+        if (el && el.classList.contains('day-group-header')) {
+          e.preventDefault();
+          toggleDay(el);
+        } else if (el && el.classList.contains('run-header')) {
+          e.preventDefault();
+          toggleRun(el);
+        } else if (el && el.classList.contains('tab')) {
+          e.preventDefault();
+          el.click();
+        }
+      }
+    });
+
+    /* ---- Format generated-at timestamp ---- */
+    var genAtEl = document.getElementById('generated-at');
+    if (genAtEl) {
+      var iso = genAtEl.textContent;
+      genAtEl.textContent = formatDate(iso) + ', ' + formatTime(iso) + ' UTC';
     }
 
     /* ---- Render ---- */
@@ -1224,14 +1607,12 @@ function generateDashboardHtml(
     document.getElementById('ci-count').textContent = CI_DATA.length;
 
     document.getElementById('panel-schedule').innerHTML =
-      renderStatusBanner(CRON_DATA) + renderDeviceGrid(CRON_DATA) + renderUptimeBars(CRON_DATA) + renderDayGroups(CRON_DATA);
+      renderStatusBanner(CRON_DATA) + renderDeviceGrid(CRON_DATA) + renderUptimeBars(CRON_DATA) + renderRecentFailures(CRON_DATA) + renderDayGroups(CRON_DATA);
 
     document.getElementById('panel-ci').innerHTML =
       renderStatusBanner(CI_DATA) + renderCiTable(CI_DATA);
 
-    /* Auto-expand today */
-    var todayEl = document.getElementById('day-' + new Date().toISOString().substring(0, 10));
-    if (todayEl) todayEl.classList.add('expanded');
+    restoreFromHash();
   </script>
 </body>
 </html>`;
@@ -1252,6 +1633,9 @@ async function runCi(s3: S3Client, meta: RunMeta): Promise<void> {
   console.log(`[ci] Uploaded ${fileCount} files.`);
 
   // Update CI manifest
+  // NOTE: This read-modify-write is not atomic — parallel CI runs could race.
+  // Impact is low (lost manifest entries; reports themselves are not affected).
+  // A proper fix would use S3 conditional PUT (ETag/If-Match).
   console.log('[ci] Updating CI manifest...');
   const ciManifest = await downloadManifest(s3, 'ci/manifest.json');
 
@@ -1263,6 +1647,7 @@ async function runCi(s3: S3Client, meta: RunMeta): Promise<void> {
     status: meta.status,
     url: reportUrl,
     devices: meta.devices,
+    durationMs: meta.durationMs,
   });
 
   // Keep only last 31 days for CI too
@@ -1311,6 +1696,7 @@ async function runCron(s3: S3Client, meta: RunMeta): Promise<void> {
     status: meta.status,
     url: reportUrl,
     devices: meta.devices,
+    durationMs: meta.durationMs,
   });
 
   const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
@@ -1343,6 +1729,7 @@ interface RunMeta {
   shortSha: string;
   timestamp: string;
   devices?: Record<string, DeviceResult>;
+  durationMs?: number;
 }
 
 function writeGithubOutput(key: string, value: string): void {
@@ -1370,6 +1757,11 @@ async function main(): Promise<void> {
     console.log(`Parsed device results: ${Object.keys(devices).map((d) => DEVICE_LABELS[d] || d).join(', ')}`);
   }
 
+  // Wall-clock duration = max across devices (they run in parallel)
+  const durationMs = devices
+    ? Math.max(...Object.values(devices).map((d) => d.durationMs || 0))
+    : undefined;
+
   const meta: RunMeta = {
     status,
     scope,
@@ -1378,6 +1770,7 @@ async function main(): Promise<void> {
     shortSha: sha.substring(0, 7),
     timestamp: new Date().toISOString().replace(/[:.]/g, '-').replace('Z', 'Z'),
     devices,
+    durationMs: durationMs || undefined,
   };
 
   // Verify report directory exists
