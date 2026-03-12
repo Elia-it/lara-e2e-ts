@@ -16,7 +16,7 @@ permissions:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 60 || 15 }}
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -30,22 +30,12 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            npx playwright install --with-deps chromium webkit firefox
-          else
-            npx playwright install --with-deps chromium
-          fi
+        run: npx playwright install --with-deps chromium webkit firefox
 
       - name: Run E2E tests
         id: tests
         continue-on-error: true
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            npx playwright test
-          else
-            npx playwright test --project=desktop-chrome
-          fi
+        run: npm test
         env:
           CI: true
           BASE_URL: ${{ secrets.BASE_URL }}
@@ -68,7 +58,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: report-${{ github.event_name == 'schedule' && 'all-devices' || 'desktop-chrome' }}
+          name: playwright-report
           path: playwright-report/
           retention-days: 7
 
