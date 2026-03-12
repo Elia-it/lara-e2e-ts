@@ -308,11 +308,11 @@ function generateDashboardHtml(
   <style>
     :root, [data-theme="light"] {
       --bg: #ffffff;
-      --bg-secondary: #f6f8fa;
+      --bg-secondary: #f3f5f7;
       --fg: #1f2328;
-      --fg-muted: #656d76;
+      --fg-muted: #59636e;
       --border: #d0d7de;
-      --border-light: #e8ebef;
+      --border-light: #dde2e7;
       --link: #0969da;
       --green: #1a7f37;
       --green-bg: #dafbe1;
@@ -320,12 +320,12 @@ function generateDashboardHtml(
       --red: #cf222e;
       --red-bg: #ffebe9;
       --red-bar: #cf222e;
-      --yellow: #9a6700;
+      --yellow: #7d5600;
       --yellow-bg: #fff8c5;
-      --yellow-bar: #bf8700;
-      --gray-bar: #d0d7de;
+      --yellow-bar: #d4960a;
+      --gray-bar: #bcc3cc;
       --hover: #f3f4f6;
-      --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.08);
       --radius: 10px;
     }
 
@@ -1731,6 +1731,10 @@ function generateDashboardHtml(
     function scrollToDay(day) {
       var el = document.getElementById('day-' + day);
       if (!el) return;
+      var collapsible = el.closest('.collapsible-section');
+      if (collapsible && collapsible.classList.contains('collapsed')) {
+        collapsible.classList.remove('collapsed');
+      }
       if (!el.classList.contains('expanded')) el.classList.add('expanded');
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       el.classList.add('highlight');
