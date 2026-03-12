@@ -1279,14 +1279,7 @@ function generateDashboardHtml(
           + '<div class="empty-state"><p>No device report data available yet.</p></div></div>';
       }
 
-      /* Collect all unique devices across recent entries */
-      var deviceSet = {};
-      for (var i = 0; i < Math.min(entries.length, 10); i++) {
-        if (!entries[i].devices) continue;
-        var keys = Object.keys(entries[i].devices);
-        for (var k = 0; k < keys.length; k++) deviceSet[keys[k]] = true;
-      }
-      var allDevices = Object.keys(deviceSet);
+      var allDevices = Object.keys(latest.devices);
 
       /* Build per-device history from last 10 runs */
       var history = {};
@@ -1309,7 +1302,6 @@ function generateDashboardHtml(
       for (var d = 0; d < allDevices.length; d++) {
         var dev = allDevices[d];
         var r = latest.devices[dev];
-        if (!r) continue;
         var total = r.passed + r.failed + r.flaky + (r.skipped || 0);
         var cardCls, badgeCls, badgeText;
 
@@ -1448,7 +1440,7 @@ function generateDashboardHtml(
       }
 
       var grouped = groupByDay(entries);
-      var html = '<div class="days-section collapsible-section collapsed">';
+      var html = '<div class="days-section collapsible-section collapsed" data-section="run-history">';
       html += '<div class="collapsible-header" onclick="toggleCollapsible(this)" tabindex="0" role="button"><div class="section-header">Run History</div><span class="collapsible-chevron">&#x25B6;</span></div>';
       html += '<div class="collapsible-body">';
       html += '<div style="display:flex;justify-content:flex-end;margin-bottom:0.75rem"><button class="toggle-all-btn" onclick="toggleAllDays(this)">Expand all</button></div>';
@@ -1678,7 +1670,7 @@ function generateDashboardHtml(
         }
       }
 
-      var html = '<div class="failures-section collapsible-section collapsed">';
+      var html = '<div class="failures-section collapsible-section collapsed" data-section="recent-failures">';
       html += '<div class="collapsible-header" onclick="toggleCollapsible(this)" tabindex="0" role="button"><div class="section-header">Recent Failures &middot; Last 7 days</div><span class="collapsible-chevron">&#x25B6;</span></div>';
       html += '<div class="collapsible-body">';
 
@@ -1735,7 +1727,7 @@ function generateDashboardHtml(
 
     /* ---- Toggle day group ---- */
     /* ---- localStorage UI state persistence ---- */
-    var UI_STATE_KEY = 'dashboard-ui-state';
+    var UI_STATE_KEY = 'dashboard-ui:' + location.pathname;
 
     function loadUiState() {
       try { return JSON.parse(localStorage.getItem(UI_STATE_KEY)) || {}; } catch(e) { return {}; }
@@ -1751,9 +1743,8 @@ function generateDashboardHtml(
       var sections = document.querySelectorAll('.collapsible-section');
       state.sections = {};
       for (var i = 0; i < sections.length; i++) {
-        var header = sections[i].querySelector('.section-header');
-        if (header) {
-          var key = header.textContent.trim();
+        var key = sections[i].dataset.section;
+        if (key) {
           state.sections[key] = !sections[i].classList.contains('collapsed');
         }
       }
@@ -1765,7 +1756,7 @@ function generateDashboardHtml(
         if (groups[i].id) state.expandedDays.push(groups[i].id);
       }
 
-      localStorage.setItem(UI_STATE_KEY, JSON.stringify(state));
+      try { localStorage.setItem(UI_STATE_KEY, JSON.stringify(state)); } catch(e) {}
     }
 
     function restoreUiState() {
@@ -1788,13 +1779,10 @@ function generateDashboardHtml(
       if (state.sections) {
         var sections = document.querySelectorAll('.collapsible-section');
         for (var i = 0; i < sections.length; i++) {
-          var header = sections[i].querySelector('.section-header');
-          if (header) {
-            var key = header.textContent.trim();
-            if (state.sections[key] !== undefined) {
-              if (state.sections[key]) sections[i].classList.remove('collapsed');
-              else sections[i].classList.add('collapsed');
-            }
+          var key = sections[i].dataset.section;
+          if (key && state.sections[key] !== undefined) {
+            if (state.sections[key]) sections[i].classList.remove('collapsed');
+            else sections[i].classList.add('collapsed');
           }
         }
       }
