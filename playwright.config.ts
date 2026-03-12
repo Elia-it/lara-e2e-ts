@@ -9,7 +9,7 @@ export default defineConfig({
   retries: env.CI ? 2 : 0,
   workers: env.CI ? 1 : undefined,
   reporter: env.CI
-    ? [['github'], ['html', { open: 'never' }]]
+    ? [['github'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results.json' }]]
     : [['html', { open: 'on-failure' }]],
 
   expect: {

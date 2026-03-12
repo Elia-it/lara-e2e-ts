@@ -111,6 +111,13 @@ jobs:
               body,
             });
 
+      - name: Notify Slack
+        if: ${{ !cancelled() }}
+        run: npx tsx scripts/notify-slack.ts --report-url=${{ steps.upload.outputs.report-url }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CLOUDFRONT_DOMAIN: ${{ secrets.CLOUDFRONT_DOMAIN }}
+
       - name: Fail if tests failed
         if: ${{ steps.tests.outcome == 'failure' }}
         run: exit 1
