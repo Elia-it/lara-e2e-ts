@@ -60,7 +60,7 @@ This generates `.preview-dashboard.html` in the project root and opens it in you
 
 The dashboard has two tabs:
 - **Schedule** (default) — Status banner, per-device 31-day uptime bars (clickable), and runs grouped by day. Click a day in the uptime bar to jump to that day's detail. Each day expands to show individual runs with per-device pass/fail breakdown and links to the full Playwright report.
-- **CI** — Simple table of CI runs with branch, commit, status, and report links.
+- **CI** — CI runs grouped by branch in expandable cards, with a filter input to search by branch name. Each card shows individual runs with commit, status, per-device breakdown, and report links.
 
 ## Project Structure
 
