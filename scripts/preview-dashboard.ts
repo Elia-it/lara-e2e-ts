@@ -150,7 +150,8 @@ const html = rawTemplate
   .replace('${ciJson}', safeJsonForHtml(JSON.stringify(ciEntries)))
   .replace('${deviceLabelsJson}', safeJsonForHtml(JSON.stringify(DEVICE_LABELS)))
   .replace('${RETENTION_DAYS}', String(RETENTION_DAYS))
-  .replace('${generatedAt}', new Date().toISOString());
+  .replace('${generatedAt}', new Date().toISOString())
+  .replace(/\$\{faviconBaseUrl\}/g, './static');
 
 /* ------------------------------------------------------------------ */
 /*  Write and open                                                     */

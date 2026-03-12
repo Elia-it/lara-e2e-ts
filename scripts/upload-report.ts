@@ -103,6 +103,22 @@ function buildBaseUrl(): string {
   return `https://${domain}`;
 }
 
+const STATIC_FAVICONS: { key: string; file: string; type: string }[] = [
+  { key: 'static/favicon.ico', file: 'static/favicon.ico', type: 'image/x-icon' },
+  { key: 'static/favicon-32x32.png', file: 'static/favicon-32x32.png', type: 'image/png' },
+  { key: 'static/favicon-16x16.png', file: 'static/favicon-16x16.png', type: 'image/png' },
+];
+
+async function uploadStaticAssets(s3: S3Client): Promise<void> {
+  for (const { key, file, type } of STATIC_FAVICONS) {
+    const filePath = join(process.cwd(), file);
+    if (!existsSync(filePath)) continue;
+    const body = readFileSync(filePath);
+    await uploadFile(s3, key, body, type, 'public, max-age=604800');
+  }
+  console.log(`[static] Uploaded ${STATIC_FAVICONS.length} favicon assets.`);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Playwright result parsing                                          */
 /* ------------------------------------------------------------------ */
@@ -296,6 +312,7 @@ function generateDashboardHtml(
   const ciJson = safeJsonForHtml(JSON.stringify(ciEntries));
   const deviceLabelsJson = safeJsonForHtml(JSON.stringify(DEVICE_LABELS));
   const generatedAt = new Date().toISOString();
+  const faviconBaseUrl = `${buildBaseUrl()}/static`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -303,7 +320,9 @@ function generateDashboardHtml(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="refresh" content="300">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath fill='%234647B9' d='M20 2.823C29.486 2.823 37.177 10.514 37.177 20S29.486 37.177 20 37.177 2.823 29.486 2.823 20C2.835 10.518 10.518 2.835 20 2.823ZM20 0C8.955 0 0 8.955 0 20s8.955 20 20 20 20-8.955 20-20S31.042 0 20 0Z'/%3E%3Cpath fill='%234647B9' d='M25.556 16.487a2.103 2.103 0 1 0 0-4.206 2.103 2.103 0 0 0 0 4.206Z'/%3E%3Cpath fill='%234647B9' d='M13.645 29.183V11.258h3.122v15.07h8.975v2.851h-12.1v.004Z'/%3E%3C/svg%3E">
+  <link rel="icon" href="${faviconBaseUrl}/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="${faviconBaseUrl}/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="${faviconBaseUrl}/favicon-16x16.png">
   <title>Lara E2E Status</title>
   <style>
     :root, [data-theme="light"] {
@@ -1891,6 +1910,9 @@ async function runCi(s3: S3Client, meta: RunMeta): Promise<void> {
   await uploadFile(s3, 'ci/manifest.json', JSON.stringify(prunedCi, null, 2), 'application/json');
   console.log(`[ci] CI manifest updated (${prunedCi.length} entries).`);
 
+  // Upload static favicon assets
+  await uploadStaticAssets(s3);
+
   // Regenerate dashboard with both datasets
   console.log('[ci] Regenerating dashboard...');
   const cronManifest = await downloadManifest(s3, 'reports/manifest.json');
@@ -1939,7 +1961,10 @@ async function runCron(s3: S3Client, meta: RunMeta): Promise<void> {
   await uploadFile(s3, 'reports/manifest.json', JSON.stringify(pruned, null, 2), 'application/json');
   console.log(`[cron] Manifest updated (${pruned.length} entries, pruned ${manifest.length - pruned.length}).`);
 
-  // 3. Generate and upload dashboard with both datasets
+  // 3. Upload static favicon assets
+  await uploadStaticAssets(s3);
+
+  // 4. Generate and upload dashboard with both datasets
   console.log('[cron] Generating dashboard...');
   const ciManifest = await downloadManifest(s3, 'ci/manifest.json');
   const indexHtml = generateDashboardHtml(pruned, ciManifest);
