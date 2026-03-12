@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { appendFileSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { appendFileSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, extname } from 'node:path';
 
 import {
@@ -17,6 +17,7 @@ const BUCKET = process.env.S3_BUCKET_NAME;
 const REGION = process.env.AWS_REGION || 'eu-west-1';
 const CLOUDFRONT_DOMAIN = process.env.CLOUDFRONT_DOMAIN;
 const REPORT_DIR = join(process.cwd(), 'playwright-report');
+const RESULTS_FILE = join(process.cwd(), 'test-results.json');
 const RETENTION_DAYS = 31;
 const UPLOAD_BATCH_SIZE = 20;
 
@@ -103,7 +104,96 @@ function buildBaseUrl(): string {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Manifest types (cron scope only)                                   */
+/*  Playwright result parsing                                          */
+/* ------------------------------------------------------------------ */
+
+interface PlaywrightResult {
+  suites: PlaywrightSuite[];
+}
+
+interface PlaywrightSuite {
+  suites?: PlaywrightSuite[];
+  specs?: PlaywrightSpec[];
+}
+
+interface PlaywrightSpec {
+  tests: PlaywrightTest[];
+}
+
+interface PlaywrightTest {
+  projectName: string;
+  status: string; // 'expected' | 'unexpected' | 'flaky' | 'skipped'
+}
+
+interface DeviceResult {
+  passed: number;
+  failed: number;
+  flaky: number;
+  skipped: number;
+}
+
+function collectTests(suite: PlaywrightSuite): PlaywrightTest[] {
+  const tests: PlaywrightTest[] = [];
+  for (const spec of suite.specs || []) {
+    tests.push(...spec.tests);
+  }
+  for (const child of suite.suites || []) {
+    tests.push(...collectTests(child));
+  }
+  return tests;
+}
+
+function parseTestResults(): Record<string, DeviceResult> | undefined {
+  try {
+    if (!existsSync(RESULTS_FILE)) return undefined;
+    const raw = readFileSync(RESULTS_FILE, 'utf-8');
+    const report = JSON.parse(raw) as PlaywrightResult;
+
+    const devices: Record<string, DeviceResult> = {};
+
+    for (const suite of report.suites) {
+      for (const test of collectTests(suite)) {
+        const name = test.projectName || 'unknown';
+        if (!devices[name]) {
+          devices[name] = { passed: 0, failed: 0, flaky: 0, skipped: 0 };
+        }
+        switch (test.status) {
+          case 'expected':
+            devices[name].passed++;
+            break;
+          case 'unexpected':
+            devices[name].failed++;
+            break;
+          case 'flaky':
+            devices[name].flaky++;
+            break;
+          case 'skipped':
+            devices[name].skipped++;
+            break;
+        }
+      }
+    }
+
+    return Object.keys(devices).length > 0 ? devices : undefined;
+  } catch {
+    console.warn('Warning: Could not parse test-results.json, device data will be omitted.');
+    return undefined;
+  }
+}
+
+const DEVICE_LABELS: Record<string, string> = {
+  'desktop-chrome': 'Desktop Chrome',
+  'desktop-safari': 'Desktop Safari',
+  'desktop-firefox': 'Desktop Firefox',
+  'desktop-edge': 'Desktop Edge',
+  'mobile-iphone-15-pro': 'iPhone 15 Pro',
+  'mobile-galaxy-s24': 'Galaxy S24',
+  'tablet-ipad-air': 'iPad Air',
+  'low-end-android': 'Low-end Android',
+};
+
+/* ------------------------------------------------------------------ */
+/*  Manifest types                                                     */
 /* ------------------------------------------------------------------ */
 
 interface ManifestEntry {
@@ -113,6 +203,7 @@ interface ManifestEntry {
   sha: string;
   status: string;
   url: string;
+  devices?: Record<string, DeviceResult>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -142,10 +233,10 @@ async function uploadFile(
   await s3.send(new PutObjectCommand(params));
 }
 
-async function downloadManifest(s3: S3Client): Promise<ManifestEntry[]> {
+async function downloadManifest(s3: S3Client, key: string): Promise<ManifestEntry[]> {
   try {
     const res = await s3.send(
-      new GetObjectCommand({ Bucket: BUCKET, Key: 'reports/manifest.json' }),
+      new GetObjectCommand({ Bucket: BUCKET, Key: key }),
     );
     const text = await res.Body?.transformToString();
     return text ? (JSON.parse(text) as ManifestEntry[]) : [];
@@ -179,28 +270,16 @@ async function uploadReportFiles(s3: S3Client, prefix: string): Promise<number> 
 }
 
 /* ------------------------------------------------------------------ */
-/*  Index HTML generation (cron scope only)                            */
+/*  Dashboard HTML generation                                          */
 /* ------------------------------------------------------------------ */
 
-function generateIndexHtml(entries: ManifestEntry[]): string {
-  const rows = entries
-    .map((e) => {
-      const date = new Date(e.timestamp).toLocaleString('en-GB', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        timeZone: 'UTC',
-      });
-      const dot = e.status === 'passed' ? '&#x1F7E2;' : '&#x1F534;';
-      const sha = escapeHtml(e.sha.substring(0, 7));
-      return `        <tr>
-          <td>${escapeHtml(date)}</td>
-          <td>${escapeHtml(e.branch)}</td>
-          <td><code>${sha}</code></td>
-          <td>${dot} ${escapeHtml(e.status)}</td>
-          <td><a href="${escapeHtml(e.url)}">View Report</a></td>
-        </tr>`;
-    })
-    .join('\n');
+function generateDashboardHtml(
+  cronEntries: ManifestEntry[],
+  ciEntries: ManifestEntry[],
+): string {
+  const cronJson = JSON.stringify(cronEntries);
+  const ciJson = JSON.stringify(ciEntries);
+  const deviceLabelsJson = JSON.stringify(DEVICE_LABELS);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -208,47 +287,952 @@ function generateIndexHtml(entries: ManifestEntry[]): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="refresh" content="300">
-  <title>Lara E2E Test Reports</title>
+  <title>Lara E2E Status</title>
   <style>
-    :root { --bg: #fff; --fg: #1a1a2e; --border: #e0e0e0; --hover: #f5f5f5; --link: #0969da; }
-    @media (prefers-color-scheme: dark) {
-      :root { --bg: #0d1117; --fg: #c9d1d9; --border: #30363d; --hover: #161b22; --link: #58a6ff; }
+    :root {
+      --bg: #ffffff;
+      --bg-secondary: #f6f8fa;
+      --fg: #1f2328;
+      --fg-muted: #656d76;
+      --border: #d0d7de;
+      --border-light: #e8ebef;
+      --link: #0969da;
+      --green: #1a7f37;
+      --green-bg: #dafbe1;
+      --green-bar: #2da44e;
+      --red: #cf222e;
+      --red-bg: #ffebe9;
+      --red-bar: #cf222e;
+      --yellow: #9a6700;
+      --yellow-bg: #fff8c5;
+      --yellow-bar: #bf8700;
+      --gray-bar: #d0d7de;
+      --hover: #f3f4f6;
+      --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+      --radius: 10px;
     }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1117;
+        --bg-secondary: #161b22;
+        --fg: #e6edf3;
+        --fg-muted: #8b949e;
+        --border: #30363d;
+        --border-light: #21262d;
+        --link: #58a6ff;
+        --green: #3fb950;
+        --green-bg: #0d2818;
+        --green-bar: #238636;
+        --red: #f85149;
+        --red-bg: #3d1214;
+        --red-bar: #da3633;
+        --yellow: #d29922;
+        --yellow-bg: #2e1f00;
+        --yellow-bar: #9e6a03;
+        --gray-bar: #30363d;
+        --hover: #1c2128;
+        --shadow: 0 1px 3px rgba(0,0,0,0.2);
+      }
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); padding: 2rem; }
-    h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
-    p.subtitle { color: #6e7681; margin-bottom: 1.5rem; font-size: 0.875rem; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-    th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--border); }
-    th { font-weight: 600; }
-    tr:hover { background: var(--hover); }
-    a { color: var(--link); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    code { background: var(--hover); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.85em; }
-    .empty { text-align: center; padding: 3rem; color: #6e7681; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2rem;
+    }
+    .header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .header-meta {
+      font-size: 0.75rem;
+      color: var(--fg-muted);
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 2rem;
+    }
+    .tab {
+      padding: 0.625rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--fg-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+      user-select: none;
+    }
+    .tab:hover { color: var(--fg); }
+    .tab.active {
+      color: var(--fg);
+      border-bottom-color: var(--link);
+    }
+    .tab-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.25rem;
+      height: 1.25rem;
+      padding: 0 0.375rem;
+      margin-left: 0.375rem;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Status banner */
+    .status-banner {
+      display: flex;
+      align-items: center;
+      gap: 0.875rem;
+      padding: 1.25rem 1.5rem;
+      border-radius: var(--radius);
+      margin-bottom: 2rem;
+      border: 1px solid var(--border-light);
+    }
+    .status-banner.operational {
+      background: var(--green-bg);
+      border-color: var(--green-bar);
+    }
+    .status-banner.degraded {
+      background: var(--yellow-bg);
+      border-color: var(--yellow-bar);
+    }
+    .status-banner.down {
+      background: var(--red-bg);
+      border-color: var(--red-bar);
+    }
+    .status-banner.empty {
+      background: var(--bg-secondary);
+    }
+    .status-icon {
+      font-size: 1.75rem;
+      line-height: 1;
+    }
+    .status-text h2 {
+      font-size: 1.125rem;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .status-text p {
+      font-size: 0.8125rem;
+      color: var(--fg-muted);
+    }
+
+    /* Section headers */
+    .section-header {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--fg-muted);
+      margin-bottom: 1rem;
+    }
+
+    /* Uptime section */
+    .uptime-section {
+      margin-bottom: 2.5rem;
+    }
+    .device-uptime {
+      padding: 1rem 0;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .device-uptime:last-child { border-bottom: none; }
+    .device-uptime-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    .device-name {
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+    .device-uptime-pct {
+      font-size: 0.8125rem;
+      font-weight: 600;
+    }
+    .uptime-bar {
+      display: flex;
+      gap: 2px;
+      height: 32px;
+    }
+    .day-block {
+      flex: 1;
+      border-radius: 3px;
+      cursor: pointer;
+      position: relative;
+      transition: opacity 0.1s, transform 0.1s;
+      min-width: 0;
+    }
+    .day-block:hover { opacity: 0.8; transform: scaleY(1.1); }
+    .day-block.passed { background: var(--green-bar); }
+    .day-block.failed { background: var(--red-bar); }
+    .day-block.mixed { background: var(--yellow-bar); }
+    .day-block.empty { background: var(--gray-bar); opacity: 0.4; cursor: default; }
+    .day-block.empty:hover { transform: none; }
+    .uptime-legend {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 0.375rem;
+      font-size: 0.6875rem;
+      color: var(--fg-muted);
+    }
+
+    /* Tooltip */
+    .tooltip {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--fg);
+      color: var(--bg);
+      padding: 0.375rem 0.625rem;
+      border-radius: 6px;
+      font-size: 0.6875rem;
+      white-space: nowrap;
+      z-index: 10;
+      pointer-events: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 5px solid transparent;
+      border-top-color: var(--fg);
+    }
+    .day-block:hover .tooltip { display: block; }
+
+    /* Day groups */
+    .days-section { margin-bottom: 2rem; }
+    .day-group {
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      margin-bottom: 0.625rem;
+      overflow: hidden;
+      transition: border-color 0.15s;
+      scroll-margin-top: 1rem;
+    }
+    .day-group:hover { border-color: var(--border); }
+    .day-group.highlight {
+      border-color: var(--link);
+      box-shadow: 0 0 0 1px var(--link);
+    }
+    .day-group-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.875rem 1.25rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .day-status-bar {
+      width: 4px;
+      height: 36px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .day-status-bar.passed { background: var(--green-bar); }
+    .day-status-bar.failed { background: var(--red-bar); }
+    .day-status-bar.mixed { background: var(--yellow-bar); }
+    .day-info { flex: 1; min-width: 0; }
+    .day-title {
+      font-size: 0.9375rem;
+      font-weight: 600;
+    }
+    .day-summary {
+      font-size: 0.75rem;
+      color: var(--fg-muted);
+      margin-top: 0.125rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .day-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.1rem 0.5rem;
+      border-radius: 10px;
+      font-size: 0.6875rem;
+      font-weight: 600;
+    }
+    .day-badge.ok { background: var(--green-bg); color: var(--green); }
+    .day-badge.fail { background: var(--red-bg); color: var(--red); }
+    .day-badge.flaky { background: var(--yellow-bg); color: var(--yellow); }
+    .day-chevron {
+      color: var(--fg-muted);
+      font-size: 0.75rem;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    .day-group.expanded .day-chevron { transform: rotate(90deg); }
+    .day-body {
+      display: none;
+      padding: 0 1.25rem 1rem;
+      border-top: 1px solid var(--border-light);
+    }
+    .day-group.expanded .day-body { display: block; }
+
+    /* Run cards (inside day groups) */
+    .run-card {
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      margin-top: 0.75rem;
+      overflow: hidden;
+      background: var(--bg-secondary);
+    }
+    .run-header {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .run-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .run-status-dot.passed { background: var(--green-bar); }
+    .run-status-dot.failed { background: var(--red-bar); }
+    .run-status-dot.unknown { background: var(--gray-bar); }
+    .run-info { flex: 1; min-width: 0; }
+    .run-title {
+      font-size: 0.8125rem;
+      font-weight: 500;
+    }
+    .run-meta {
+      font-size: 0.6875rem;
+      color: var(--fg-muted);
+      margin-top: 0.0625rem;
+    }
+    .run-meta code {
+      background: var(--bg);
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+      font-size: 0.65rem;
+      border: 1px solid var(--border-light);
+    }
+    .run-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-shrink: 0;
+    }
+    .run-link {
+      font-size: 0.6875rem;
+      color: var(--link);
+      text-decoration: none;
+      white-space: nowrap;
+      padding: 0.25rem 0.625rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      transition: background 0.1s;
+    }
+    .run-link:hover { background: var(--hover); text-decoration: none; }
+    .run-chevron {
+      color: var(--fg-muted);
+      font-size: 0.6875rem;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    .run-card.expanded .run-chevron { transform: rotate(90deg); }
+    .run-details {
+      display: none;
+      padding: 0 1rem 0.75rem;
+      border-top: 1px solid var(--border-light);
+    }
+    .run-card.expanded .run-details { display: block; }
+    .device-row {
+      display: flex;
+      align-items: center;
+      padding: 0.4375rem 0;
+      gap: 0.625rem;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .device-row:last-child { border-bottom: none; }
+    .device-status-icon {
+      width: 16px;
+      text-align: center;
+      flex-shrink: 0;
+      font-size: 0.75rem;
+    }
+    .device-label {
+      font-size: 0.8125rem;
+      font-weight: 500;
+      min-width: 130px;
+    }
+    .device-counts {
+      font-size: 0.6875rem;
+      color: var(--fg-muted);
+    }
+    .device-counts .failed-count { color: var(--red); font-weight: 600; }
+    .device-counts .flaky-count { color: var(--yellow); }
+
+    /* Device status grid */
+    .status-grid {
+      margin-bottom: 2.5rem;
+    }
+    .status-grid-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.75rem;
+    }
+    .device-card {
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 1.125rem 1.25rem;
+      transition: border-color 0.15s;
+    }
+    .device-card:hover { border-color: var(--border); }
+    .device-card.up { border-left: 3px solid var(--green-bar); }
+    .device-card.down { border-left: 3px solid var(--red-bar); }
+    .device-card.flaky { border-left: 3px solid var(--yellow-bar); }
+    .device-card.no-data { border-left: 3px solid var(--gray-bar); }
+    .device-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    .device-card-name {
+      font-size: 0.8125rem;
+      font-weight: 600;
+    }
+    .device-card-badge {
+      font-size: 0.625rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.125rem 0.5rem;
+      border-radius: 10px;
+    }
+    .device-card-badge.up { background: var(--green-bg); color: var(--green); }
+    .device-card-badge.down { background: var(--red-bg); color: var(--red); }
+    .device-card-badge.flaky { background: var(--yellow-bg); color: var(--yellow); }
+    .device-card-badge.no-data { background: var(--bg-secondary); color: var(--fg-muted); }
+    .device-card-counts {
+      font-size: 0.75rem;
+      color: var(--fg-muted);
+      margin-bottom: 0.625rem;
+    }
+    .device-card-counts strong { color: var(--fg); }
+    .device-card-counts .fail { color: var(--red); font-weight: 600; }
+    .device-card-history {
+      display: flex;
+      gap: 3px;
+      align-items: center;
+    }
+    .history-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .history-dot.passed { background: var(--green-bar); }
+    .history-dot.failed { background: var(--red-bar); }
+    .history-dot.mixed { background: var(--yellow-bar); }
+    .history-dot.empty { background: var(--gray-bar); opacity: 0.35; }
+    .history-label {
+      font-size: 0.5625rem;
+      color: var(--fg-muted);
+      margin-left: 0.25rem;
+      white-space: nowrap;
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--fg-muted);
+    }
+    .empty-state p {
+      font-size: 0.875rem;
+    }
+
+    /* CI tab simplified table */
+    .ci-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+    }
+    .ci-table th {
+      text-align: left;
+      padding: 0.625rem 0.75rem;
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--fg-muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .ci-table td {
+      padding: 0.625rem 0.75rem;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .ci-table tr:hover td { background: var(--hover); }
+    .ci-table a { color: var(--link); text-decoration: none; }
+    .ci-table a:hover { text-decoration: underline; }
+    .ci-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .container { padding: 1.5rem 1rem; }
+      .day-group-header { padding: 0.75rem 1rem; }
+      .run-header { padding: 0.625rem 0.75rem; }
+      .device-label { min-width: 100px; }
+      .uptime-bar { height: 24px; }
+      .day-body { padding: 0 0.75rem 0.75rem; }
+      .status-grid-cards { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-  <h1>Lara E2E Test Reports</h1>
-  <p class="subtitle">Scheduled monitoring runs. Auto-refreshes every 5 minutes. Reports retained for ${RETENTION_DAYS} days.</p>
-  ${
-    entries.length === 0
-      ? '<p class="empty">No reports yet.</p>'
-      : `<table>
-      <thead>
-        <tr>
-          <th>Date (UTC)</th>
-          <th>Branch</th>
-          <th>Commit</th>
-          <th>Status</th>
-          <th>Report</th>
-        </tr>
-      </thead>
-      <tbody>
-${rows}
-      </tbody>
-    </table>`
-  }
+  <div class="container">
+    <div class="header">
+      <h1>Lara E2E Status</h1>
+      <span class="header-meta">Auto-refreshes every 5 min</span>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="schedule">Schedule<span class="tab-count" id="schedule-count">0</span></div>
+      <div class="tab" data-tab="ci">CI<span class="tab-count" id="ci-count">0</span></div>
+    </div>
+
+    <div class="tab-panel active" id="panel-schedule"></div>
+    <div class="tab-panel" id="panel-ci"></div>
+  </div>
+
+  <script>
+    const CRON_DATA = ${cronJson};
+    const CI_DATA = ${ciJson};
+    const DEVICE_LABELS = ${deviceLabelsJson};
+    const RETENTION_DAYS = ${RETENTION_DAYS};
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function formatDate(iso) {
+      return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+    }
+
+    function formatWeekday(iso) {
+      return new Date(iso).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' });
+    }
+
+    function formatTime(iso) {
+      return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+    }
+
+    function timeAgo(iso) {
+      var diff = Date.now() - new Date(iso).getTime();
+      var mins = Math.floor(diff / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return mins + ' min ago';
+      var hrs = Math.floor(mins / 60);
+      if (hrs < 24) return hrs + 'h ago';
+      return Math.floor(hrs / 24) + 'd ago';
+    }
+
+    function deviceLabel(key) {
+      return DEVICE_LABELS[key] || key;
+    }
+
+    function isToday(dateStr) {
+      return dateStr === new Date().toISOString().substring(0, 10);
+    }
+
+    /* ---- Group entries by YYYY-MM-DD ---- */
+    function groupByDay(entries) {
+      var groups = {};
+      var order = [];
+      for (var i = 0; i < entries.length; i++) {
+        var day = entries[i].timestamp.substring(0, 10);
+        if (!groups[day]) { groups[day] = []; order.push(day); }
+        groups[day].push(entries[i]);
+      }
+      return { groups: groups, order: order };
+    }
+
+    /* ---- Aggregate day status ---- */
+    function dayStatus(runs) {
+      var totalFailed = 0, totalFlaky = 0, totalPassed = 0;
+      for (var i = 0; i < runs.length; i++) {
+        if (runs[i].devices) {
+          var devs = Object.values(runs[i].devices);
+          for (var j = 0; j < devs.length; j++) {
+            totalFailed += devs[j].failed;
+            totalFlaky  += devs[j].flaky;
+            totalPassed += devs[j].passed;
+          }
+        } else {
+          if (runs[i].status === 'failed') totalFailed++;
+          else totalPassed++;
+        }
+      }
+      return { failed: totalFailed, flaky: totalFlaky, passed: totalPassed };
+    }
+
+    /* ---- Status banner ---- */
+    function renderStatusBanner(entries) {
+      if (entries.length === 0) {
+        return '<div class="status-banner empty"><span class="status-icon">&#x2014;</span><div class="status-text"><h2>No Data Yet</h2><p>Waiting for the first scheduled run.</p></div></div>';
+      }
+      var latest = entries[0];
+      var allPassed = latest.status === 'passed';
+      var cls = allPassed ? 'operational' : 'down';
+      var icon = allPassed ? '&#x2705;' : '&#x1F6A8;';
+      var title = allPassed ? 'All Systems Operational' : 'Issues Detected';
+      var sub = 'Last run ' + timeAgo(latest.timestamp) + ' &middot; ' + esc(formatDate(latest.timestamp)) + ' ' + esc(formatTime(latest.timestamp)) + ' UTC';
+      return '<div class="status-banner ' + cls + '"><span class="status-icon">' + icon + '</span><div class="status-text"><h2>' + title + '</h2><p>' + sub + '</p></div></div>';
+    }
+
+    /* ---- Device status grid ---- */
+    function renderDeviceGrid(entries) {
+      /* Find the latest entry that has device data */
+      var latest = null;
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].devices && Object.keys(entries[i].devices).length > 0) {
+          latest = entries[i]; break;
+        }
+      }
+      if (!latest) return '';
+
+      /* Build per-device history from last 10 runs */
+      var allDevices = Object.keys(latest.devices);
+      var history = {};
+      for (var d = 0; d < allDevices.length; d++) history[allDevices[d]] = [];
+      for (var i = 0; i < Math.min(entries.length, 10); i++) {
+        var e = entries[i];
+        for (var d = 0; d < allDevices.length; d++) {
+          var dev = allDevices[d];
+          if (e.devices && e.devices[dev]) {
+            var r = e.devices[dev];
+            history[dev].push(r.failed > 0 ? 'failed' : r.flaky > 0 ? 'mixed' : 'passed');
+          } else {
+            history[dev].push('empty');
+          }
+        }
+      }
+
+      var html = '<div class="status-grid"><div class="section-header">Current Status</div><div class="status-grid-cards">';
+
+      for (var d = 0; d < allDevices.length; d++) {
+        var dev = allDevices[d];
+        var r = latest.devices[dev];
+        var total = r.passed + r.failed + r.flaky + r.skipped;
+        var cardCls, badgeCls, badgeText;
+
+        if (r.failed > 0) {
+          cardCls = 'down'; badgeCls = 'down'; badgeText = 'Down';
+        } else if (r.flaky > 0) {
+          cardCls = 'flaky'; badgeCls = 'flaky'; badgeText = 'Flaky';
+        } else {
+          cardCls = 'up'; badgeCls = 'up'; badgeText = 'Operational';
+        }
+
+        /* Counts line */
+        var countsHtml = '<strong>' + r.passed + '/' + total + '</strong> passed';
+        if (r.failed > 0) countsHtml += ' &middot; <span class="fail">' + r.failed + ' failed</span>';
+        if (r.flaky > 0) countsHtml += ' &middot; ' + r.flaky + ' flaky';
+
+        /* History dots (reversed so oldest is left, newest is right) */
+        var dots = '';
+        var hist = history[dev];
+        for (var h = hist.length - 1; h >= 0; h--) {
+          dots += '<span class="history-dot ' + hist[h] + '"></span>';
+        }
+
+        html += '<div class="device-card ' + cardCls + '">';
+        html += '<div class="device-card-header">';
+        html += '<span class="device-card-name">' + esc(deviceLabel(dev)) + '</span>';
+        html += '<span class="device-card-badge ' + badgeCls + '">' + badgeText + '</span>';
+        html += '</div>';
+        html += '<div class="device-card-counts">' + countsHtml + '</div>';
+        html += '<div class="device-card-history">' + dots + '<span class="history-label">last ' + hist.length + ' runs</span></div>';
+        html += '</div>';
+      }
+
+      html += '</div></div>';
+      return html;
+    }
+
+    /* ---- Uptime bars ---- */
+    function buildDayMap(entries) {
+      var map = {};
+      for (var i = 0; i < entries.length; i++) {
+        var entry = entries[i];
+        if (!entry.devices) continue;
+        var day = entry.timestamp.substring(0, 10);
+        var devKeys = Object.keys(entry.devices);
+        for (var j = 0; j < devKeys.length; j++) {
+          var dev = devKeys[j], result = entry.devices[dev];
+          if (!map[dev]) map[dev] = {};
+          if (!map[dev][day]) map[dev][day] = { passed: 0, failed: 0, flaky: 0 };
+          map[dev][day].passed += result.passed;
+          map[dev][day].failed += result.failed;
+          map[dev][day].flaky  += result.flaky;
+        }
+      }
+      return map;
+    }
+
+    function buildDaysList() {
+      var days = [];
+      var now = new Date();
+      for (var i = RETENTION_DAYS - 1; i >= 0; i--) {
+        var d = new Date(now);
+        d.setUTCDate(d.getUTCDate() - i);
+        days.push(d.toISOString().substring(0, 10));
+      }
+      return days;
+    }
+
+    function renderUptimeBars(entries) {
+      var dayMap = buildDayMap(entries);
+      var devices = Object.keys(dayMap);
+      if (devices.length === 0) return '';
+
+      var days = buildDaysList();
+      var html = '<div class="uptime-section"><div class="section-header">Uptime &middot; Last ' + RETENTION_DAYS + ' days</div>';
+
+      for (var di = 0; di < devices.length; di++) {
+        var dev = devices[di];
+        var data = dayMap[dev];
+        var totalRuns = 0, passedRuns = 0;
+        var bars = '';
+
+        for (var k = 0; k < days.length; k++) {
+          var day = days[k];
+          var d = data[day];
+          if (!d) {
+            bars += '<div class="day-block empty" data-day="' + day + '"><div class="tooltip">' + esc(formatDate(day + 'T00:00:00Z')) + ' &mdash; No runs</div></div>';
+          } else {
+            totalRuns++;
+            var hasFailed = d.failed > 0;
+            var hasFlaky = d.flaky > 0 && !hasFailed;
+            var cls = 'passed';
+            if (hasFailed) cls = 'failed';
+            else if (hasFlaky) cls = 'mixed';
+            if (!hasFailed) passedRuns++;
+            var tip = esc(formatDate(day + 'T00:00:00Z')) + ' &mdash; ' + d.passed + ' passed' + (d.failed ? ', ' + d.failed + ' failed' : '') + (d.flaky ? ', ' + d.flaky + ' flaky' : '') + '  (click to view)';
+            bars += '<div class="day-block ' + cls + '" data-day="' + day + '" onclick="scrollToDay(this.dataset.day)"><div class="tooltip">' + tip + '</div></div>';
+          }
+        }
+
+        var pct = totalRuns > 0 ? ((passedRuns / totalRuns) * 100).toFixed(1) : '---';
+        var pctColor = pct === '100.0' ? 'var(--green)' : pct === '---' ? 'var(--fg-muted)' : 'var(--red)';
+
+        html += '<div class="device-uptime">';
+        html += '<div class="device-uptime-header"><span class="device-name">' + esc(deviceLabel(dev)) + '</span><span class="device-uptime-pct" style="color:' + pctColor + '">' + pct + '%</span></div>';
+        html += '<div class="uptime-bar">' + bars + '</div>';
+        html += '<div class="uptime-legend"><span>' + esc(formatDate(days[0] + 'T00:00:00Z')) + '</span><span>Today</span></div>';
+        html += '</div>';
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    /* ---- Day-grouped run cards ---- */
+    function renderDayGroups(entries) {
+      if (entries.length === 0) {
+        return '<div class="empty-state"><p>No reports yet.</p></div>';
+      }
+
+      var grouped = groupByDay(entries);
+      var html = '<div class="days-section"><div class="section-header">Run History</div>';
+
+      for (var gi = 0; gi < grouped.order.length; gi++) {
+        var day = grouped.order[gi];
+        var runs = grouped.groups[day];
+        var stat = dayStatus(runs);
+        var barCls = stat.failed > 0 ? 'failed' : stat.flaky > 0 ? 'mixed' : 'passed';
+        var dateLabel = isToday(day) ? 'Today' : esc(formatWeekday(day + 'T00:00:00Z')) + ', ' + esc(formatDate(day + 'T00:00:00Z'));
+
+        /* Day summary badges */
+        var badges = '';
+        if (stat.failed > 0) badges += '<span class="day-badge fail">' + stat.failed + ' failed</span>';
+        if (stat.flaky > 0) badges += '<span class="day-badge flaky">' + stat.flaky + ' flaky</span>';
+        if (stat.passed > 0) badges += '<span class="day-badge ok">' + stat.passed + ' passed</span>';
+        badges += '<span style="color:var(--fg-muted)">&middot; ' + runs.length + ' run' + (runs.length > 1 ? 's' : '') + '</span>';
+
+        html += '<div class="day-group" id="day-' + day + '">';
+        html += '<div class="day-group-header" onclick="toggleDay(this)">';
+        html += '<div class="day-status-bar ' + barCls + '"></div>';
+        html += '<div class="day-info"><div class="day-title">' + dateLabel + '</div>';
+        html += '<div class="day-summary">' + badges + '</div></div>';
+        html += '<span class="day-chevron">&#x25B6;</span>';
+        html += '</div>';
+
+        html += '<div class="day-body">';
+        for (var ri = 0; ri < runs.length; ri++) {
+          var e = runs[ri];
+          var dotCls = e.status === 'passed' ? 'passed' : e.status === 'failed' ? 'failed' : 'unknown';
+          var timeStr = esc(formatTime(e.timestamp)) + ' UTC';
+          var sha = esc(e.sha.substring(0, 7));
+          var hasDevices = e.devices && Object.keys(e.devices).length > 0;
+
+          html += '<div class="run-card">';
+          html += '<div class="run-header" onclick="toggleRun(this)">';
+          html += '<span class="run-status-dot ' + dotCls + '"></span>';
+          html += '<div class="run-info"><div class="run-title">' + timeStr + '</div>';
+          html += '<div class="run-meta"><code>' + esc(e.branch) + '</code> &middot; <code>' + sha + '</code></div></div>';
+          html += '<div class="run-actions">';
+          html += '<a class="run-link" href="' + esc(e.url) + '" target="_blank" onclick="event.stopPropagation()">View Report</a>';
+          if (hasDevices) html += '<span class="run-chevron">&#x25B6;</span>';
+          html += '</div>';
+          html += '</div>';
+
+          if (hasDevices) {
+            html += '<div class="run-details">';
+            var devKeys = Object.keys(e.devices);
+            for (var di = 0; di < devKeys.length; di++) {
+              var dev = devKeys[di], r = e.devices[dev];
+              var hasFailed = r.failed > 0;
+              var icon = hasFailed ? '&#x2716;' : '&#x2714;';
+              var iconColor = hasFailed ? 'var(--red)' : 'var(--green)';
+              var counts = r.passed + ' passed';
+              if (r.failed) counts += ', <span class="failed-count">' + r.failed + ' failed</span>';
+              if (r.flaky) counts += ', <span class="flaky-count">' + r.flaky + ' flaky</span>';
+              if (r.skipped) counts += ', ' + r.skipped + ' skipped';
+
+              html += '<div class="device-row">';
+              html += '<span class="device-status-icon" style="color:' + iconColor + '">' + icon + '</span>';
+              html += '<span class="device-label">' + esc(deviceLabel(dev)) + '</span>';
+              html += '<span class="device-counts">' + counts + '</span>';
+              html += '</div>';
+            }
+            html += '</div>';
+          }
+
+          html += '</div>';
+        }
+        html += '</div></div>';
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    /* ---- CI table ---- */
+    function renderCiTable(entries) {
+      if (entries.length === 0) {
+        return '<div class="empty-state"><p>No CI reports yet.</p></div>';
+      }
+
+      var html = '<table class="ci-table"><thead><tr><th>Date (UTC)</th><th>Branch</th><th>Commit</th><th>Status</th><th>Report</th></tr></thead><tbody>';
+
+      for (var i = 0; i < entries.length; i++) {
+        var e = entries[i];
+        var dateStr = esc(formatDate(e.timestamp)) + ', ' + esc(formatTime(e.timestamp));
+        var sha = esc(e.sha.substring(0, 7));
+        var dot = e.status === 'passed' ? '<span style="color:var(--green)">&#x2714;</span>' : '<span style="color:var(--red)">&#x2716;</span>';
+
+        html += '<tr>';
+        html += '<td>' + dateStr + '</td>';
+        html += '<td><code>' + esc(e.branch) + '</code></td>';
+        html += '<td><code>' + sha + '</code></td>';
+        html += '<td><span class="ci-status">' + dot + ' ' + esc(e.status) + '</span></td>';
+        html += '<td><a href="' + esc(e.url) + '" target="_blank">View</a></td>';
+        html += '</tr>';
+      }
+
+      html += '</tbody></table>';
+      return html;
+    }
+
+    /* ---- Tab switching ---- */
+    document.querySelectorAll('.tab').forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+        document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+        tab.classList.add('active');
+        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    /* ---- Toggle day group ---- */
+    function toggleDay(header) {
+      header.parentElement.classList.toggle('expanded');
+    }
+
+    /* ---- Toggle run details ---- */
+    function toggleRun(header) {
+      header.parentElement.classList.toggle('expanded');
+    }
+
+    /* ---- Scroll to day from uptime bar click ---- */
+    function scrollToDay(day) {
+      var el = document.getElementById('day-' + day);
+      if (!el) return;
+      /* Expand the day group */
+      if (!el.classList.contains('expanded')) el.classList.add('expanded');
+      /* Scroll into view */
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      /* Brief highlight */
+      el.classList.add('highlight');
+      setTimeout(function() { el.classList.remove('highlight'); }, 2000);
+    }
+
+    /* ---- Render ---- */
+    document.getElementById('schedule-count').textContent = CRON_DATA.length;
+    document.getElementById('ci-count').textContent = CI_DATA.length;
+
+    document.getElementById('panel-schedule').innerHTML =
+      renderStatusBanner(CRON_DATA) + renderDeviceGrid(CRON_DATA) + renderUptimeBars(CRON_DATA) + renderDayGroups(CRON_DATA);
+
+    document.getElementById('panel-ci').innerHTML =
+      renderStatusBanner(CI_DATA) + renderCiTable(CI_DATA);
+
+    /* Auto-expand today */
+    var todayEl = document.getElementById('day-' + new Date().toISOString().substring(0, 10));
+    if (todayEl) todayEl.classList.add('expanded');
+  </script>
 </body>
 </html>`;
 }
@@ -256,7 +1240,7 @@ ${rows}
 /* ------------------------------------------------------------------ */
 /*  Scope: CI (push / PR)                                              */
 /*  - Upload to ci/{timestamp}_{branch}_{sha}/                        */
-/*  - No manifest, no index — just upload and output the URL           */
+/*  - Update ci/manifest.json and regenerate dashboard                 */
 /* ------------------------------------------------------------------ */
 
 async function runCi(s3: S3Client, meta: RunMeta): Promise<void> {
@@ -267,6 +1251,33 @@ async function runCi(s3: S3Client, meta: RunMeta): Promise<void> {
   const fileCount = await uploadReportFiles(s3, prefix);
   console.log(`[ci] Uploaded ${fileCount} files.`);
 
+  // Update CI manifest
+  console.log('[ci] Updating CI manifest...');
+  const ciManifest = await downloadManifest(s3, 'ci/manifest.json');
+
+  ciManifest.unshift({
+    prefix,
+    timestamp: new Date().toISOString(),
+    branch: meta.branch,
+    sha: meta.sha,
+    status: meta.status,
+    url: reportUrl,
+    devices: meta.devices,
+  });
+
+  // Keep only last 31 days for CI too
+  const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const prunedCi = ciManifest.filter((e) => new Date(e.timestamp).getTime() > cutoff);
+
+  await uploadFile(s3, 'ci/manifest.json', JSON.stringify(prunedCi, null, 2), 'application/json');
+  console.log(`[ci] CI manifest updated (${prunedCi.length} entries).`);
+
+  // Regenerate dashboard with both datasets
+  console.log('[ci] Regenerating dashboard...');
+  const cronManifest = await downloadManifest(s3, 'reports/manifest.json');
+  const indexHtml = generateDashboardHtml(cronManifest, prunedCi);
+  await uploadFile(s3, 'reports/index.html', indexHtml, 'text/html', 'no-cache');
+
   console.log('');
   console.log(`Report URL: ${reportUrl}`);
   writeGithubOutput('report-url', reportUrl);
@@ -275,7 +1286,7 @@ async function runCi(s3: S3Client, meta: RunMeta): Promise<void> {
 /* ------------------------------------------------------------------ */
 /*  Scope: Cron (scheduled monitoring)                                 */
 /*  - Upload to reports/{timestamp}_{branch}_{sha}/                   */
-/*  - Update manifest.json and regenerate index.html                   */
+/*  - Update manifest.json and regenerate dashboard                    */
 /*  - Prune entries older than 31 days                                 */
 /* ------------------------------------------------------------------ */
 
@@ -288,9 +1299,9 @@ async function runCron(s3: S3Client, meta: RunMeta): Promise<void> {
   const fileCount = await uploadReportFiles(s3, prefix);
   console.log(`[cron] Uploaded ${fileCount} files.`);
 
-  // 2. Update manifest
+  // 2. Update cron manifest
   console.log('[cron] Updating manifest...');
-  const manifest = await downloadManifest(s3);
+  const manifest = await downloadManifest(s3, 'reports/manifest.json');
 
   manifest.unshift({
     prefix,
@@ -299,6 +1310,7 @@ async function runCron(s3: S3Client, meta: RunMeta): Promise<void> {
     sha: meta.sha,
     status: meta.status,
     url: reportUrl,
+    devices: meta.devices,
   });
 
   const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
@@ -307,9 +1319,10 @@ async function runCron(s3: S3Client, meta: RunMeta): Promise<void> {
   await uploadFile(s3, 'reports/manifest.json', JSON.stringify(pruned, null, 2), 'application/json');
   console.log(`[cron] Manifest updated (${pruned.length} entries, pruned ${manifest.length - pruned.length}).`);
 
-  // 3. Generate and upload index page
-  console.log('[cron] Generating index page...');
-  const indexHtml = generateIndexHtml(pruned);
+  // 3. Generate and upload dashboard with both datasets
+  console.log('[cron] Generating dashboard...');
+  const ciManifest = await downloadManifest(s3, 'ci/manifest.json');
+  const indexHtml = generateDashboardHtml(pruned, ciManifest);
   await uploadFile(s3, 'reports/index.html', indexHtml, 'text/html', 'no-cache');
 
   console.log('');
@@ -329,6 +1342,7 @@ interface RunMeta {
   sha: string;
   shortSha: string;
   timestamp: string;
+  devices?: Record<string, DeviceResult>;
 }
 
 function writeGithubOutput(key: string, value: string): void {
@@ -351,6 +1365,11 @@ async function main(): Promise<void> {
   const branch = process.env.GITHUB_REF_NAME || gitValue('git branch --show-current');
   const sha = process.env.GITHUB_SHA || gitValue('git rev-parse HEAD');
 
+  const devices = parseTestResults();
+  if (devices) {
+    console.log(`Parsed device results: ${Object.keys(devices).map((d) => DEVICE_LABELS[d] || d).join(', ')}`);
+  }
+
   const meta: RunMeta = {
     status,
     scope,
@@ -358,6 +1377,7 @@ async function main(): Promise<void> {
     sha,
     shortSha: sha.substring(0, 7),
     timestamp: new Date().toISOString().replace(/[:.]/g, '-').replace('Z', 'Z'),
+    devices,
   };
 
   // Verify report directory exists

@@ -109,6 +109,9 @@ To enable a project, uncomment it in `playwright.config.ts` and update `.github/
 ### Slack Notifications
 - `npm run notify:slack -- --report-url=<url>` - Send failure notification to Slack
 
+### Dashboard Preview
+- `npm run dashboard:preview` - Preview status dashboard locally with mock data (opens in browser)
+
 ## Rules
 - NEVER allow GA4 or tracking requests to reach external services during tests. All analytics must be blocked via `blocked-routes.config.ts`.
 - NEVER use `page.locator('.css-class')` or XPath in spec files. Use semantic locators: `getByRole`, `getByLabel`, `getByText`, `getByTestId`.
