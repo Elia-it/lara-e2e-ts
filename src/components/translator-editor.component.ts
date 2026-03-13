@@ -108,5 +108,8 @@ export class TranslatorEditorComponent {
     });
     await this.sourceInput.waitFor({ state: 'attached' });
     await this.sourceInput.waitFor({ state: 'visible' });
+    // Wait for language selectors to stabilize — the iframe rebuild may still be in progress
+    const targetSelector = this.isMobileViewport() ? this.targetLanguageMobile : this.targetLanguageDesktop;
+    await targetSelector.waitFor({ state: 'visible' });
   }
 }
