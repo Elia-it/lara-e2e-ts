@@ -1,11 +1,9 @@
 import { test as base } from '@playwright/test';
-import { LoginPage } from '../pages/login.page';
 import { TranslatePage } from '../pages/translate.page';
 import { BLOCKED_ROUTES } from '../config/blocked-routes.config';
 import { env } from '../config/env.config';
 
 type Fixtures = {
-  loginPage: LoginPage;
   translatePage: TranslatePage;
 };
 
@@ -16,7 +14,6 @@ export const test = base.extend<Fixtures>({
     );
 
     // Pre-set Cookiebot consent cookie so the dialog never appears during tests.
-    // The cookie consent smoke test overrides the page fixture and clears this cookie.
     // Format matches Cookiebot's CookieConsent cookie structure (URL-encoded JSON-like object).
     const cookieConsentValue = encodeURIComponent(
       "{stamp:'-1',necessary:true,preferences:true,statistics:true,marketing:true,method:'explicit',ver:1}",
@@ -32,10 +29,6 @@ export const test = base.extend<Fixtures>({
     ]);
 
     await use(page);
-  },
-
-  loginPage: async ({ page }, use) => {
-    await use(new LoginPage(page));
   },
 
   translatePage: async ({ page }, use) => {
