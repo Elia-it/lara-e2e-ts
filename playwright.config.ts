@@ -7,7 +7,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: env.CI,
   retries: env.CI ? 2 : 1,
-  workers: env.CI ? 1 : undefined,
+  workers: 1,
   reporter: env.CI
     ? [['github'], ['list'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results.json' }]]
     : [['html', { open: 'on-failure' }]],
