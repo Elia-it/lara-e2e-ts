@@ -3,23 +3,24 @@ import { env } from './src/config/env.config';
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 60_000,
+  timeout: env.CI ? 45_000 : 30_000,
   fullyParallel: true,
   forbidOnly: env.CI,
-  retries: env.CI ? 2 : 0,
-  workers: env.CI ? 4 : undefined,
+  retries: env.CI ? 2 : 1,
+  workers: 1,
   reporter: env.CI
     ? [['github'], ['list'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results.json' }]]
     : [['html', { open: 'on-failure' }]],
 
   expect: {
-    timeout: 60_000,
+    timeout: env.CI ? 15_000 : 10_000,
   },
 
   use: {
     baseURL: env.BASE_URL,
-    actionTimeout: 60_000,
-    navigationTimeout: 60_000,
+    locale: 'en-US',
+    actionTimeout: env.CI ? 20_000 : 15_000,
+    navigationTimeout: env.CI ? 30_000 : 20_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',
@@ -78,9 +79,9 @@ export default defineConfig({
 
     // --- Tablet ---
     {
-      name: 'tablet-ipad-air',
+      name: 'tablet-ipad-mini',
       use: {
-        ...devices['iPad Air'],
+        ...devices['iPad Mini'],
       },
     },
 

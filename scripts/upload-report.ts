@@ -214,7 +214,7 @@ const DEVICE_LABELS: Record<string, string> = {
   'desktop-edge': 'Desktop Edge',
   'mobile-iphone-15-pro': 'iPhone 15 Pro',
   'mobile-galaxy-s24': 'Galaxy S24',
-  'tablet-ipad-air': 'iPad Air',
+  'tablet-ipad-mini': 'iPad Mini',
   'low-end-android': 'Low-end Android',
 };
 

@@ -8,8 +8,4 @@ export abstract class BasePage {
   async goto(): Promise<void> {
     await this.page.goto(this.path);
   }
-
-  async waitForReady(): Promise<void> {
-    await this.page.waitForLoadState('domcontentloaded');
-  }
 }
