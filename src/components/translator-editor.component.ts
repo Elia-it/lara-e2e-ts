@@ -42,18 +42,31 @@ export class TranslatorEditorComponent {
     this.targetLanguageMobile = this.frame.locator('#targetLanguageMobile');
   }
 
-  /** Returns the visible source language selector, waiting for the editor to be ready */
+  /** Returns the visible source language selector, waiting for either variant to appear */
   async getVisibleSourceSelector(): Promise<Locator> {
-    await this.sourceInput.waitFor({ state: 'visible' });
-    if (await this.sourceLanguageDesktop.isVisible()) return this.sourceLanguageDesktop;
-    return this.sourceLanguageMobile;
+    return this.waitForVisibleVariant(this.sourceLanguageDesktop, this.sourceLanguageMobile);
   }
 
-  /** Returns the visible target language selector, waiting for the editor to be ready */
+  /** Returns the visible target language selector, waiting for either variant to appear */
   async getVisibleTargetSelector(): Promise<Locator> {
-    await this.sourceInput.waitFor({ state: 'visible' });
-    if (await this.targetLanguageDesktop.isVisible()) return this.targetLanguageDesktop;
-    return this.targetLanguageMobile;
+    return this.waitForVisibleVariant(this.targetLanguageDesktop, this.targetLanguageMobile);
+  }
+
+  /**
+   * Waits for either the desktop or mobile variant to become visible and returns it.
+   * Throws if neither becomes visible within the timeout.
+   */
+  private async waitForVisibleVariant(desktop: Locator, mobile: Locator): Promise<Locator> {
+    const timeout = 10_000;
+    await Promise.race([
+      desktop.waitFor({ state: 'visible', timeout }),
+      mobile.waitFor({ state: 'visible', timeout }),
+    ]).catch(() => {
+      throw new Error('Neither desktop nor mobile language selector became visible');
+    });
+    // Re-check after the race to return the actually visible one
+    if (await desktop.isVisible()) return desktop;
+    return mobile;
   }
 
   async typeSource(text: string): Promise<void> {

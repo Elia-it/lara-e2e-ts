@@ -16,12 +16,16 @@ export const test = base.extend<Fixtures>({
     );
 
     // Pre-set Cookiebot consent cookie so the dialog never appears during tests.
-    // The cookie consent smoke test uses its own fixture and is unaffected.
+    // The cookie consent smoke test overrides the page fixture and clears this cookie.
+    // Format matches Cookiebot's CookieConsent cookie structure (URL-encoded JSON-like object).
+    const cookieConsentValue = encodeURIComponent(
+      "{stamp:'-1',necessary:true,preferences:true,statistics:true,marketing:true,method:'explicit',ver:1}",
+    );
     const domain = new URL(env.BASE_URL).hostname;
     await page.context().addCookies([
       {
         name: 'CookieConsent',
-        value: '{stamp:%27-1%27%2Cnecessary:true%2Cpreferences:true%2Cstatistics:true%2Cmarketing:true%2Cmethod:%27explicit%27%2Cver:1}',
+        value: cookieConsentValue,
         domain,
         path: '/',
       },

@@ -99,7 +99,7 @@ Currently only Desktop Chrome is enabled. Additional projects are defined in `pl
 | `desktop-edge` | Chromium | 1366x768 | Commented out |
 | `mobile-iphone-15-pro` | WebKit | 393x852 | Commented out |
 | `mobile-galaxy-s24` | Chromium | 412x915 | Commented out |
-| `tablet-ipad-air` | WebKit | 820x1180 | Commented out |
+| `tablet-ipad-mini` | WebKit | 768x1024 | Commented out |
 | `low-end-android` | Chromium | 360x800 | Commented out |
 
 ## Documentation

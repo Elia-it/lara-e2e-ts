@@ -78,7 +78,7 @@ Currently only `desktop-chrome` is active. 7 additional projects are defined but
 | `desktop-edge` | Chromium | 1366x768 | Enterprise Windows | Commented out |
 | `mobile-iphone-15-pro` | WebKit | 393x852 | iOS flagship | Commented out |
 | `mobile-galaxy-s24` | Chromium | 412x915 | Android flagship | Commented out |
-| `tablet-ipad-air` | WebKit | 820x1180 | Tablet portrait | Commented out |
+| `tablet-ipad-mini` | WebKit | 768x1024 | Tablet portrait | Commented out |
 | `low-end-android` | Chromium | 360x800 | Budget Android / Pixel 7 | Commented out |
 
 To enable additional projects, uncomment them in `playwright.config.ts` and update `.github/workflows/e2e.yml` to install the required browsers and (optionally) restore the matrix strategy.

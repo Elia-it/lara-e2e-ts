@@ -1,13 +1,11 @@
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect } from '../../src/fixtures/base.fixture';
 import { CookieConsentComponent } from '../../src/components/cookie-consent.component';
-import { BLOCKED_ROUTES } from '../../src/config/blocked-routes.config';
 
-// Raw fixture without auto-dismiss — we need the cookie dialog to remain visible
+// Override the base page fixture to remove the pre-set CookieConsent cookie.
+// Route blocking is inherited from the base fixture.
 const test = base.extend<{ cookieConsent: CookieConsentComponent }>({
   page: async ({ page }, use) => {
-    await Promise.all(
-      BLOCKED_ROUTES.map((pattern) => page.route(pattern, (route) => route.abort())),
-    );
+    await page.context().clearCookies();
     await use(page);
   },
   cookieConsent: async ({ page }, use) => {

@@ -71,7 +71,7 @@ docs/               - Architecture, conventions, writing-tests, report storage
 Currently only `desktop-chrome` (1920x1080) is active. 7 additional projects are defined but commented out in `playwright.config.ts`:
 - **Desktop:** `desktop-safari`, `desktop-firefox`, `desktop-edge`
 - **Mobile:** `mobile-iphone-15-pro`, `mobile-galaxy-s24`
-- **Tablet:** `tablet-ipad-air`
+- **Tablet:** `tablet-ipad-mini`
 - **Low-end:** `low-end-android`
 
 To enable a project, uncomment it in `playwright.config.ts` and update `.github/workflows/e2e.yml` to install the required browser.
