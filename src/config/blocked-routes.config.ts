@@ -11,4 +11,7 @@ export const BLOCKED_ROUTES: string[] = [
 
   // GA4 Measurement Protocol (collect endpoint)
   '**/collect?v=2**',
+
+  // Google Sign-In One Tap — overlay intercepts pointer events on smaller viewports
+  '**/accounts.google.com/gsi/**',
 ];

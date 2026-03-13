@@ -6,7 +6,8 @@ test.describe('Translation', () => {
     await translatePage.translate('Hello world!');
 
     await translatePage.editor.openSourceLanguageDropdown();
-    await expect(translatePage.editor.sourceLanguageSelector).toContainText('English(detected)');
+    const sourceSelector = await translatePage.editor.getVisibleSourceSelector();
+    await expect(sourceSelector).toContainText('English(detected)');
   });
 
   test('should translate text from English to Spanish', async ({ translatePage }) => {

@@ -1,8 +1,6 @@
 import { test as base } from '@playwright/test';
 import { LoginPage } from '../pages/login.page';
 import { TranslatePage } from '../pages/translate.page';
-import { CookieConsentComponent } from '../components/cookie-consent.component';
-import { HeaderLanguageComponent } from '../components/header-language.component';
 import { BLOCKED_ROUTES } from '../config/blocked-routes.config';
 import { env } from '../config/env.config';
 
@@ -17,15 +15,17 @@ export const test = base.extend<Fixtures>({
       BLOCKED_ROUTES.map((pattern) => page.route(pattern, (route) => route.abort())),
     );
 
-    // Dismiss cookie consent on every page load (covers cross-domain navigations)
-    const cookieConsent = new CookieConsentComponent(page);
-    page.on('load', () => void cookieConsent.acceptIfVisible());
-
-    // Set UI language to ensure deterministic locale
-    await page.goto('/');
-    await cookieConsent.acceptIfVisible();
-    const headerLanguage = new HeaderLanguageComponent(page);
-    await headerLanguage.selectLanguage(env.UI_LANGUAGE);
+    // Pre-set Cookiebot consent cookie so the dialog never appears during tests.
+    // The cookie consent smoke test uses its own fixture and is unaffected.
+    const domain = new URL(env.BASE_URL).hostname;
+    await page.context().addCookies([
+      {
+        name: 'CookieConsent',
+        value: '{stamp:%27-1%27%2Cnecessary:true%2Cpreferences:true%2Cstatistics:true%2Cmarketing:true%2Cmethod:%27explicit%27%2Cver:1}',
+        domain,
+        path: '/',
+      },
+    ]);
 
     await use(page);
   },

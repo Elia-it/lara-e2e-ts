@@ -6,10 +6,6 @@ export abstract class BasePage {
   abstract readonly path: string;
 
   async goto(): Promise<void> {
-    await this.page.goto(this.path);
-  }
-
-  async waitForReady(): Promise<void> {
-    await this.page.waitForLoadState('domcontentloaded');
+    await this.page.goto(this.path, { waitUntil: 'domcontentloaded' });
   }
 }

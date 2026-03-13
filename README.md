@@ -45,6 +45,9 @@ npm run report:upload -- --status=passed
 | `npm run test:ui` | Open Playwright UI mode |
 | `npm run report` | Open last HTML report |
 | `npm run codegen` | Launch Playwright codegen tool |
+| `npx playwright codegen --device="iPhone 15 Pro"` | Codegen emulating a specific device |
+| `npx playwright codegen --browser=webkit --viewport-size=1440,900` | Codegen with custom browser and viewport |
+| `npx playwright test --project=desktop-safari` | Run tests on a specific device/project |
 | `npm run report:upload` | Upload Playwright report to S3 |
 | `npm run dashboard:preview` | Preview the status dashboard locally with mock data |
 
