@@ -3,7 +3,7 @@ import { env } from './src/config/env.config';
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 30_000,
+  timeout: env.CI ? 45_000 : 30_000,
   fullyParallel: true,
   forbidOnly: env.CI,
   retries: env.CI ? 2 : 1,
@@ -13,14 +13,14 @@ export default defineConfig({
     : [['html', { open: 'on-failure' }]],
 
   expect: {
-    timeout: 30_000,
+    timeout: env.CI ? 15_000 : 10_000,
   },
 
   use: {
     baseURL: env.BASE_URL,
     locale: 'en-US',
-    actionTimeout: 30_000,
-    navigationTimeout: 30_000,
+    actionTimeout: env.CI ? 20_000 : 15_000,
+    navigationTimeout: env.CI ? 30_000 : 20_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',

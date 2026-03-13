@@ -5,8 +5,8 @@ import type { Page, FrameLocator, Locator } from '@playwright/test';
  * All locators are scoped to the iframe's contentFrame.
  *
  * The app renders both desktop and mobile language selectors in the DOM.
- * Only one set is visible depending on the viewport width.
- * This component auto-detects which variant is visible and uses it.
+ * Only one set is visible depending on the viewport width (Tailwind `lg` = 1024px).
+ * This component uses the viewport to pick the correct variant deterministically.
  */
 export class TranslatorEditorComponent {
   private readonly page: Page;
@@ -42,31 +42,24 @@ export class TranslatorEditorComponent {
     this.targetLanguageMobile = this.frame.locator('#targetLanguageMobile');
   }
 
-  /** Returns the visible source language selector, waiting for either variant to appear */
+  /** Returns the source language selector matching the current viewport */
   async getVisibleSourceSelector(): Promise<Locator> {
-    return this.waitForVisibleVariant(this.sourceLanguageDesktop, this.sourceLanguageMobile);
+    const selector = this.isMobileViewport() ? this.sourceLanguageMobile : this.sourceLanguageDesktop;
+    await selector.waitFor({ state: 'visible' });
+    return selector;
   }
 
-  /** Returns the visible target language selector, waiting for either variant to appear */
+  /** Returns the target language selector matching the current viewport */
   async getVisibleTargetSelector(): Promise<Locator> {
-    return this.waitForVisibleVariant(this.targetLanguageDesktop, this.targetLanguageMobile);
+    const selector = this.isMobileViewport() ? this.targetLanguageMobile : this.targetLanguageDesktop;
+    await selector.waitFor({ state: 'visible' });
+    return selector;
   }
 
-  /**
-   * Waits for either the desktop or mobile variant to become visible and returns it.
-   * Throws if neither becomes visible within the timeout.
-   */
-  private async waitForVisibleVariant(desktop: Locator, mobile: Locator): Promise<Locator> {
-    const timeout = 10_000;
-    await Promise.race([
-      desktop.waitFor({ state: 'visible', timeout }),
-      mobile.waitFor({ state: 'visible', timeout }),
-    ]).catch(() => {
-      throw new Error('Neither desktop nor mobile language selector became visible');
-    });
-    // Re-check after the race to return the actually visible one
-    if (await desktop.isVisible()) return desktop;
-    return mobile;
+  /** Tailwind `lg` breakpoint is 1024px — below that, mobile selectors are shown */
+  private isMobileViewport(): boolean {
+    const viewport = this.page.viewportSize();
+    return !viewport || viewport.width < 1024;
   }
 
   async typeSource(text: string): Promise<void> {
@@ -85,6 +78,8 @@ export class TranslatorEditorComponent {
 
   async selectSourceLanguage(language: string): Promise<void> {
     const selector = await this.getVisibleSourceSelector();
+    // Skip if already set (geo-detected default may match)
+    if (await this.isLanguageAlreadySelected(selector, language)) return;
     await selector.click();
     await this.frame.getByRole('combobox', { name: 'Search' }).fill(language);
     await this.frame.getByRole('option', { name: language, exact: true }).click();
@@ -93,10 +88,17 @@ export class TranslatorEditorComponent {
 
   async selectTargetLanguage(language: string): Promise<void> {
     const selector = await this.getVisibleTargetSelector();
+    // Skip if already set (geo-detected default may match)
+    if (await this.isLanguageAlreadySelected(selector, language)) return;
     await selector.click();
     await this.frame.getByRole('combobox', { name: 'Search' }).fill(language);
     await this.frame.getByRole('option', { name: language }).first().click();
     await this.waitForEditorReady();
+  }
+
+  private async isLanguageAlreadySelected(selector: Locator, language: string): Promise<boolean> {
+    const text = await selector.textContent();
+    return text?.includes(language) ?? false;
   }
 
   private async waitForEditorReady(): Promise<void> {

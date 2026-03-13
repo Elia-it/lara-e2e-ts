@@ -13,11 +13,14 @@ const test = base.extend<{ cookieConsent: CookieConsentComponent }>({
   },
 });
 
+// Cookiebot loads from a third-party CDN — allow extra time for the dialog to appear
+const DIALOG_TIMEOUT = 15_000;
+
 test.describe('Cookie Consent', () => {
   test('should display the cookie consent dialog on first visit', async ({ page, cookieConsent }) => {
     await page.goto('/');
 
-    await expect(cookieConsent.dialog).toBeVisible();
+    await expect(cookieConsent.dialog).toBeVisible({ timeout: DIALOG_TIMEOUT });
     await expect(cookieConsent.allowAllButton).toBeVisible();
     await expect(cookieConsent.customizeButton).toBeVisible();
   });
@@ -25,13 +28,14 @@ test.describe('Cookie Consent', () => {
   test('should dismiss the dialog after accepting all cookies', async ({ page, cookieConsent }) => {
     await page.goto('/');
 
-    await expect(cookieConsent.dialog).toBeVisible();
+    await expect(cookieConsent.dialog).toBeVisible({ timeout: DIALOG_TIMEOUT });
     await cookieConsent.allowAllButton.click();
     await expect(cookieConsent.dialog).toBeHidden();
   });
 
   test('should not show the dialog again after accepting', async ({ page, cookieConsent }) => {
     await page.goto('/');
+    await expect(cookieConsent.dialog).toBeVisible({ timeout: DIALOG_TIMEOUT });
     await cookieConsent.allowAllButton.click();
     await expect(cookieConsent.dialog).toBeHidden();
 
