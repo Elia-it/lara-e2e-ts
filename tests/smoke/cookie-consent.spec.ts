@@ -1,10 +1,13 @@
 import { test as base, expect } from '../../src/fixtures/base.fixture';
 import { CookieConsentComponent } from '../../src/components/cookie-consent.component';
+import { BLOCKED_ROUTES } from '../../src/config/blocked-routes.config';
 
-// Override the base page fixture to remove the pre-set CookieConsent cookie.
-// Route blocking is inherited from the base fixture.
+// Override the base page fixture:
+// 1. Unroute blocked patterns — Cookiebot may load via GTM which the base fixture blocks
+// 2. Clear the pre-set CookieConsent cookie so the dialog appears
 const test = base.extend<{ cookieConsent: CookieConsentComponent }>({
   page: async ({ page }, use) => {
+    await Promise.all(BLOCKED_ROUTES.map((pattern) => page.unroute(pattern)));
     await page.context().clearCookies();
     await use(page);
   },
