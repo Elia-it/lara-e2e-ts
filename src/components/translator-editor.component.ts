@@ -68,7 +68,7 @@ export class TranslatorEditorComponent {
   }
 
   getTranslation(): Locator {
-    return this.translatedText.getByRole('paragraph');
+    return this.translatedText;
   }
 
   async openSourceLanguageDropdown(): Promise<void> {

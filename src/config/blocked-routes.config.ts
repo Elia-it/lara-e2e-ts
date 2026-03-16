@@ -14,4 +14,14 @@ export const BLOCKED_ROUTES: string[] = [
 
   // Google Sign-In One Tap — overlay intercepts pointer events on smaller viewports
   '**/accounts.google.com/gsi/**',
+
+  // Facebook Pixel
+  '**/facebook.com/**',
+  '**/facebook.net/**',
+  '**/connect.facebook.net/**',
+  '**/fbevents.js',
+
+  // Cookiebot — consent is auto-dismissed in fixture, no need to load the script
+  '**/cookiebot.com/**',
+  '**/consentcdn.cookiebot.com/**',
 ];
