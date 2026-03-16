@@ -63,6 +63,7 @@ export class TranslatorEditorComponent {
   }
 
   async typeSource(text: string): Promise<void> {
+    await this.sourceInput.waitFor({ state: 'visible' });
     await this.sourceInput.click();
     await this.sourceInput.fill(text);
   }
