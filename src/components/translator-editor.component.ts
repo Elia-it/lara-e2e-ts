@@ -63,12 +63,13 @@ export class TranslatorEditorComponent {
   }
 
   async typeSource(text: string): Promise<void> {
+    await this.sourceInput.waitFor({ state: 'visible' });
     await this.sourceInput.click();
     await this.sourceInput.fill(text);
   }
 
   getTranslation(): Locator {
-    return this.translatedText.getByRole('paragraph');
+    return this.translatedText;
   }
 
   async openSourceLanguageDropdown(): Promise<void> {
