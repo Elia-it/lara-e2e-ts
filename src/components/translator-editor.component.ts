@@ -32,9 +32,10 @@ export class TranslatorEditorComponent {
     this.frame = page.getByTestId('iframe-element').contentFrame();
     this.sourceInput = this.frame.getByTestId('source-editable');
     this.translatedText = this.frame.getByTestId('translatedText');
-    this.translateTextTab = this.frame.getByRole('link', { name: 'Translate text' });
-    this.translateDocumentsTab = this.frame.getByRole('link', { name: 'Translate documents' });
-    this.interpreterTab = this.frame.getByRole('link', { name: 'Interpreter' });
+    // Tab names include dynamic counts (e.g. "Text 203 languages") — use regex to match the stable prefix
+    this.translateTextTab = this.frame.getByRole('link', { name: /^Text\s/i });
+    this.translateDocumentsTab = this.frame.getByRole('link', { name: /^Documents\s/i });
+    this.interpreterTab = this.frame.getByRole('link', { name: /^Interpreter\s/i });
     // Desktop and mobile selectors coexist in DOM — only one set is visible per viewport
     this.sourceLanguageDesktop = this.frame.locator('#sourceLanguage');
     this.targetLanguageDesktop = this.frame.locator('#targetLanguage');
