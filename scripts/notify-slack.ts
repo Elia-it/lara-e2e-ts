@@ -173,7 +173,19 @@ function buildMessage(
     .join('  |  ');
 
   return {
+    text: allPassed ? `E2E ${triggerLabel}: ${statusText}` : `:p0: <!here> E2E ${triggerLabel}: ${statusText}`,
     blocks: [
+      ...(!allPassed
+        ? [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: ':p0: <!here> *E2E tests failed* — immediate attention needed.',
+              },
+            },
+          ]
+        : []),
       {
         type: 'header',
         text: {
