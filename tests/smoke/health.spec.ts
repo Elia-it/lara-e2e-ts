@@ -12,7 +12,7 @@ test.describe('Smoke Tests', () => {
     await expect(await translatePage.editor.getVisibleSourceSelector()).toBeVisible();
     await expect(await translatePage.editor.getVisibleTargetSelector()).toBeVisible();
 
-    await translatePage.editor.openModeMenuIfMobile();
+    await translatePage.editor.openModeMenuIfNeeded();
     await expect(translatePage.editor.translateTextTab).toBeVisible();
     await expect(translatePage.editor.translateDocumentsTab).toBeVisible();
     await expect(translatePage.editor.interpreterTab).toBeVisible();

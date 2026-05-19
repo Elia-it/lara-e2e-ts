@@ -59,9 +59,13 @@ export class TranslatorEditorComponent {
     return selector;
   }
 
-  /** On mobile the 3 mode links live inside a dropdown — no-op on desktop where they're already visible */
-  async openModeMenuIfMobile(): Promise<void> {
-    if (!this.isMobileViewport()) return;
+  /**
+   * The 3 mode links render directly on desktop and tablet, but collapse into a dropdown on small viewports.
+   * Probe actual visibility rather than guessing from the viewport width — tablet (iPad Mini, 768) uses the
+   * mobile language selectors but still shows the desktop nav.
+   */
+  async openModeMenuIfNeeded(): Promise<void> {
+    if (await this.translateTextTab.isVisible()) return;
     await this.modeSwitcherMobile.click();
   }
 
