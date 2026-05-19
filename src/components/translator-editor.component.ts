@@ -16,10 +16,11 @@ export class TranslatorEditorComponent {
   readonly sourceInput: Locator;
   readonly translatedText: Locator;
 
-  // Navigation tabs
+  // Navigation tabs — desktop renders 3 links; mobile collapses them into a single dropdown button
   readonly translateTextTab: Locator;
   readonly translateDocumentsTab: Locator;
   readonly interpreterTab: Locator;
+  readonly modeSwitcherMobile: Locator;
 
   // Language selectors — desktop and mobile variants
   private readonly sourceLanguageDesktop: Locator;
@@ -36,6 +37,7 @@ export class TranslatorEditorComponent {
     this.translateTextTab = this.frame.getByRole('link', { name: /^Text\s/i });
     this.translateDocumentsTab = this.frame.getByRole('link', { name: /^Documents\s/i });
     this.interpreterTab = this.frame.getByRole('link', { name: /^Interpreter\s/i });
+    this.modeSwitcherMobile = this.frame.getByRole('button', { name: /^Text$/ });
     // Desktop and mobile selectors coexist in DOM — only one set is visible per viewport
     this.sourceLanguageDesktop = this.frame.locator('#sourceLanguage');
     this.targetLanguageDesktop = this.frame.locator('#targetLanguage');
@@ -55,6 +57,16 @@ export class TranslatorEditorComponent {
     const selector = this.isMobileViewport() ? this.targetLanguageMobile : this.targetLanguageDesktop;
     await selector.waitFor({ state: 'visible' });
     return selector;
+  }
+
+  /**
+   * The 3 mode links render directly on desktop and tablet, but collapse into a dropdown on small viewports.
+   * Probe actual visibility rather than guessing from the viewport width — tablet (iPad Mini, 768) uses the
+   * mobile language selectors but still shows the desktop nav.
+   */
+  async openModeMenuIfNeeded(): Promise<void> {
+    if (await this.translateTextTab.isVisible()) return;
+    await this.modeSwitcherMobile.click();
   }
 
   /** Tailwind `lg` breakpoint is 1024px — below that, mobile selectors are shown */
